@@ -140,12 +140,12 @@ addrinfo *malloc_ai(int port, u_long addr, const struct addrinfo *hints)
 	((struct sockaddr_in *)(ai)->ai_addr)->sin_addr.s_addr = addr;
 	
 	/* XXX: the following is not generally correct, but does what we want */
-	if (hints->ai_socktype)
+	if (hints && hints->ai_socktype)
 		ai->ai_socktype = hints->ai_socktype;
 	else
 		ai->ai_socktype = SOCK_STREAM;
 
-	if (hints->ai_protocol)
+	if (hints && hints->ai_protocol)
 		ai->ai_protocol = hints->ai_protocol;
 
 	return (ai);
