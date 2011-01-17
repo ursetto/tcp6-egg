@@ -1,0 +1,6 @@
+;; -*- scheme -*-
+
+(use system)
+(define-system rfc2553
+  (compiled-scheme-file "rfc2553.scm"))
+(current-system rfc2553)
