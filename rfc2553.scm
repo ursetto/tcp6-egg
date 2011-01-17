@@ -1,5 +1,9 @@
+;; getaddrinfo will (on OS X) return 2 same IP addresses, one for SOCK_DGRAM, one for SOCK_STREAM
+
+
 (use foreigners)
 (use srfi-4)
+(use hostinfo) ;; temporary -- for ip->string
 
 (foreign-declare "
 #include <sys/socket.h>
@@ -11,15 +15,26 @@
 (define-foreign-type sockaddr_in6* (pointer "struct sockaddr_in6"))
 ;;(define-foreign-type in6_addr )
 
-(define-foreign-variable _af_inet int "AF_INET")
-(define-foreign-variable _af_inet6 int "AF_INET6")
-(define af/inet _af_inet)
-(define af/inet6 _af_inet6)
+;; (define-foreign-variable _af_inet int "AF_INET")
+;; (define-foreign-variable _af_inet6 int "AF_INET6")
+;; (define af/inet _af_inet)
+;; (define af/inet6 _af_inet6)
 
-;; (define-foreign-enum-type (address-family int)
-;;   (address-family->integer integer->address-family)
-;;   (af/inet )
-;;   )
+(define-foreign-enum-type (address-family int)
+  (address-family->integer integer->address-family)
+  ((af/inet AF_INET) AF_INET)
+  ((af/inet6 AF_INET6) AF_INET6))
+(define af/inet AF_INET)
+(define af/inet6 AF_INET6)
+
+(define-foreign-enum-type (socket-type int)
+  (socket-type->integer integer->socket-type)
+  ((sock/stream SOCK_STREAM) SOCK_STREAM)
+  ((sock/dgram  SOCK_DGRAM)  SOCK_DGRAM)
+  ((sock/raw    SOCK_RAW)    SOCK_RAW))
+(define sock/stream SOCK_STREAM)
+(define sock/dgram  SOCK_DGRAM)
+(define sock/raw    SOCK_RAW)
 
 (define-foreign-record-type (sockaddr-in6 "struct sockaddr_in6")
   (constructor: make-sockaddr-in6)
@@ -58,6 +73,19 @@
   ((c-pointer (struct "sockaddr")) ai_addr addrinfo-addr)  ;; non-null?
   (c-string ai_canonname addrinfo-canonname)
   ((c-pointer (struct "addrinfo")) ai_next addrinfo-next))
+
+(define (debug-addrinfo a)
+  (and a
+       (pp `((family ,(integer->address-family (addrinfo-family a)))
+             (socktype ,(integer->socket-type (addrinfo-socktype a)))
+             ;;      (addrlen ,(addrinfo-addrlen a))
+             ,(if (eqv? (addrinfo-family a) af/inet6)
+                  `(address ,(ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr a)))))
+                  `(address ?))
+             (flags ,(addrinfo-flags a))
+             ,@(let ((cn (addrinfo-canonname a)))
+                 (if cn `((canonname ,cn)) '()))))))
+
 (define (make-null-addrinfo)
   (let ((null! (foreign-lambda* void ((addrinfo ai))
                  "memset(ai,0,sizeof(*ai));"
