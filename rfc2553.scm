@@ -42,6 +42,14 @@
 (define ipproto/tcp IPPROTO_TCP)
 (define ipproto/udp IPPROTO_UDP)
 
+(define-foreign-record-type (sockaddr "struct sockaddr")
+  (int sa_family sockaddr-family))
+
+(define-foreign-record-type (sockaddr-in "struct sockaddr_in")
+  (int sin_family sockaddr-in-family)
+  (int sin_port sockaddr-in-port)
+  ((struct "in_addr") sin_addr sockaddr-in-addr))
+
 (define-foreign-record-type (sockaddr-in6 "struct sockaddr_in6")
   (constructor: make-sockaddr-in6)
   (destructor: free-sockaddr-in6)
@@ -53,6 +61,13 @@
   (integer sin6_scope_id sockaddr-in6-scope-id)
 )
 
+;; (define-foreign-record-type (in-addr "struct in_addr")
+;;   (c-pointer s_addr in-addr-s))
+(define-foreign-type in-addr (c-pointer (struct "in_addr")))
+(define (in-addr-s a)
+  ((foreign-lambda* c-pointer ((in-addr in))
+     "C_return(&in->s_addr);")
+   a))
 (define-foreign-record-type (in6-addr "struct in6_addr")
   (c-pointer s6_addr in6-addr-s6))
 
@@ -65,6 +80,9 @@
 
 (define (inet6-address a)
   (c-pointer->u8vector (in6-addr-s6 a) 16))
+(define (inet-address a)
+  (c-pointer->u8vector (in-addr-s a) 4))
+
 ;; ex. (inet6-address (sockaddr-in6-addr (addrinfo-addr (getaddrinfo "fe80::1%en0"))))
 ;; ex. (ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr (getaddrinfo "ipv6.3e8.org")))))
 ;;     path can be shortened, e.g. ((sockaddr_in6*)ai_addr)->sin6_addr.s6_addr
@@ -87,9 +105,12 @@
              (socktype ,(integer->socket-type (addrinfo-socktype a)))
              (protocol ,(integer->protocol-type (addrinfo-protocol a)))
              ;;      (addrlen ,(addrinfo-addrlen a))
-             ,(if (eqv? (addrinfo-family a) af/inet6)
-                  `(address ,(ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr a)))))
-                  `(address ?))
+             ,(let ((F (addrinfo-family a)))
+                (cond ((eqv? F af/inet6)
+                       `(address ,(ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr a))))))
+                      ((eqv? F af/inet)
+                       `(address ,(ip->string (inet-address (sockaddr-in-addr (addrinfo-addr a))))))
+                      (else `(address ?))))
              (flags ,(addrinfo-flags a))
              ,@(let ((cn (addrinfo-canonname a)))
                  (if cn `((canonname ,cn)) '()))))))
