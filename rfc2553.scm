@@ -1,5 +1,4 @@
-;; getaddrinfo will (on OS X) return 2 same IP addresses, one for SOCK_DGRAM, one for SOCK_STREAM
-
+;; getaddrinfo will (on OS X) return 2 same IP addresses for TCP and UDP
 
 (use foreigners)
 (use srfi-4)
@@ -36,6 +35,13 @@
 (define sock/dgram  SOCK_DGRAM)
 (define sock/raw    SOCK_RAW)
 
+(define-foreign-enum-type (protocol-type int)
+  (protocol-type->integer integer->protocol-type)
+  ((ipproto/tcp IPPROTO_TCP)  IPPROTO_TCP)
+  ((ipproto/udp IPPROTO_UDP)  IPPROTO_UDP))
+(define ipproto/tcp IPPROTO_TCP)
+(define ipproto/udp IPPROTO_UDP)
+
 (define-foreign-record-type (sockaddr-in6 "struct sockaddr_in6")
   (constructor: make-sockaddr-in6)
   (destructor: free-sockaddr-in6)
@@ -68,7 +74,8 @@
   (destructor: free-addrinfo)   ; similar name!
   (int ai_flags addrinfo-flags)
   (int ai_family addrinfo-family set-addrinfo-family!)
-  (int ai_socktype addrinfo-socktype)
+  (int ai_socktype addrinfo-socktype set-addrinfo-socktype!)
+  (int ai_protocol addrinfo-protocol set-addrinfo-protocol!)  
   (int ai_addrlen addrinfo-addrlen)
   ((c-pointer (struct "sockaddr")) ai_addr addrinfo-addr)  ;; non-null?
   (c-string ai_canonname addrinfo-canonname)
@@ -78,6 +85,7 @@
   (and a
        (pp `((family ,(integer->address-family (addrinfo-family a)))
              (socktype ,(integer->socket-type (addrinfo-socktype a)))
+             (protocol ,(integer->protocol-type (addrinfo-protocol a)))
              ;;      (addrlen ,(addrinfo-addrlen a))
              ,(if (eqv? (addrinfo-family a) af/inet6)
                   `(address ,(ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr a)))))
@@ -85,6 +93,11 @@
              (flags ,(addrinfo-flags a))
              ,@(let ((cn (addrinfo-canonname a)))
                  (if cn `((canonname ,cn)) '()))))))
+(define (debug-addrinfo-list A)
+  (let loop ((A A))
+    (when A
+      (debug-addrinfo A)
+      (loop (addrinfo-next A)))))
 
 (define (make-null-addrinfo)
   (let ((null! (foreign-lambda* void ((addrinfo ai))
@@ -105,8 +118,9 @@
   (let-location ((res c-pointer))
     (let ((service #f)
           (hints #f))
-      ;; (define hints (make-null-addrinfo))
-      ;; (set-addrinfo-family! hints af/inet6)
+      (define hints (make-null-addrinfo))
+      ;;(set-addrinfo-family! hints af/inet6)
+;;      (set-addrinfo-socktype! hints sock/stream)
       (let ((rc (_getaddrinfo node service hints #$res)))
         (when hints (free-addrinfo hints))
         (cond ((= 0 rc)
