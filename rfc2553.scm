@@ -1,4 +1,5 @@
 ;; getaddrinfo will (on OS X) return 2 same IP addresses for TCP and UDP
+;; IPV6_V6ONLY socket option
 
 (use foreigners)
 (use srfi-4)
@@ -9,9 +10,9 @@
 #include <netdb.h>
 ")
 
-(define-foreign-type sockaddr* (pointer "struct sockaddr"))
-(define-foreign-type sockaddr_in* (pointer "struct sockaddr_in"))
-(define-foreign-type sockaddr_in6* (pointer "struct sockaddr_in6"))
+;; (define-foreign-type sockaddr* (pointer "struct sockaddr"))
+;; (define-foreign-type sockaddr_in* (pointer "struct sockaddr_in"))
+;; (define-foreign-type sockaddr_in6* (pointer "struct sockaddr_in6"))
 ;;(define-foreign-type in6_addr )
 
 ;; (define-foreign-variable _af_inet int "AF_INET")
@@ -41,6 +42,8 @@
   ((ipproto/udp IPPROTO_UDP)  IPPROTO_UDP))
 (define ipproto/tcp IPPROTO_TCP)
 (define ipproto/udp IPPROTO_UDP)
+
+(define-foreign-variable ai/canonname int "AI_CANONNAME")
 
 (define-foreign-record-type (sockaddr "struct sockaddr")
   (int sa_family sockaddr-family))
@@ -90,7 +93,7 @@
 (define-foreign-record-type (addrinfo "struct addrinfo")
   (constructor: make-addrinfo)
   (destructor: free-addrinfo)   ; similar name!
-  (int ai_flags addrinfo-flags)
+  (int ai_flags addrinfo-flags set-addrinfo-flags!)
   (int ai_family addrinfo-family set-addrinfo-family!)
   (int ai_socktype addrinfo-socktype set-addrinfo-socktype!)
   (int ai_protocol addrinfo-protocol set-addrinfo-protocol!)  
@@ -142,6 +145,7 @@
       (define hints (make-null-addrinfo))
       ;;(set-addrinfo-family! hints af/inet6)
 ;;      (set-addrinfo-socktype! hints sock/stream)
+      (set-addrinfo-flags! hints ai/canonname)
       (let ((rc (_getaddrinfo node service hints #$res)))
         (when hints (free-addrinfo hints))
         (cond ((= 0 rc)
