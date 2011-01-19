@@ -105,7 +105,7 @@
 (define-record addrinfo
   flags family socktype protocol address canonname)
 (define-record-printer (addrinfo a out)
-  (fprintf out "#<addrinfo ~S ~S ~S ~S canonical: ~S>"
+  (fprintf out "#<addrinfo ~S ~S ~S ~S~A>"
            (let ((F (addrinfo-family a)))
              (cond ((eqv? F af/inet6)
                     (ip->string (inet6-address (sockaddr-in6-addr (addrinfo-address a)))))
@@ -115,7 +115,9 @@
            (integer->address-family (addrinfo-family a))
            (integer->socket-type (addrinfo-socktype a))
            (integer->protocol-type (addrinfo-protocol a))
-           (addrinfo-canonname a)
+           (cond ((addrinfo-canonname a)
+                  => (lambda (cn) (sprintf " canonical: ~S" cn)))
+                 (else ""))
            ;; (addrinfo-flags a)          ;; flag display isn't that interesting
            ))
 
