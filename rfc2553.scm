@@ -1,5 +1,8 @@
 ;; getaddrinfo will (on OS X) return 2 same IP addresses for TCP and UDP
 ;; IPV6_V6ONLY socket option
+;; sa_len might be necessary to set if creating sockaddr structs, but is system-dependent;
+;;    however, chicken tcp does not set this member.  In general, you should obtain the
+;;    sockaddr from getaddrinfo() etc.
 
 (use foreigners)
 (use srfi-4)
@@ -46,7 +49,7 @@
   ((struct "in_addr") sin_addr sin-addr))
 
 (define-foreign-record-type (sin6 "struct sockaddr_in6")
-  (constructor: make-sin6)
+  (constructor: alloc-sin6)
   (destructor: free-sin6)
   ;; sin6_len is not universally provided
   (int sin6_family sin6-family)
@@ -83,7 +86,7 @@
 ;;     path can be shortened, e.g. ((sockaddr_in6*)ai_addr)->sin6_addr.s6_addr
 
 (define-foreign-record-type (ai "struct addrinfo")
-  (constructor: make-ai)
+  (constructor: alloc-ai)
   (destructor: free-ai)   ; similar name!
   (int ai_flags ai-flags set-ai-flags!)
   (int ai_family ai-family set-ai-family!)
@@ -156,11 +159,11 @@
       (loop (ai-next A)))))
 |#
 
-(define (make-null-ai)
+(define (alloc-null-ai)
   (let ((null! (foreign-lambda* void ((ai ai))
                  "memset(ai,0,sizeof(*ai));"
                  ))
-        (ai (make-ai)))
+        (ai (alloc-ai)))
     (null! ai)
     ai))
 (define _getaddrinfo
@@ -174,7 +177,7 @@
 (define (getaddrinfo node #!key family socktype protocol flags service) ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((hints #f))
-      (define hints (make-null-ai))
+      (define hints (alloc-null-ai))
       (when family (set-ai-family! hints family))
       (when socktype (set-ai-socktype! hints socktype))
       (when flags (set-ai-flags! hints flags))
