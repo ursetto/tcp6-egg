@@ -22,6 +22,7 @@
 
 (define-foreign-enum-type (address-family int)
   (address-family->integer integer->address-family)
+  ((af/unspec AF_UNSPEC) AF_UNSPEC)
   ((af/inet AF_INET) AF_INET)
   ((af/inet6 AF_INET6) AF_INET6))
 (define af/inet AF_INET)
@@ -112,7 +113,7 @@
                     (ip->string (inet6-address (sockaddr-in6-addr (addrinfo-address a)))))
                    ((eqv? F af/inet)
                     (ip->string (inet-address (sockaddr-in-addr (addrinfo-address a)))))
-                   (else "?")))
+                   (else '?)))
            (integer->address-family (addrinfo-family a))
            (integer->socket-type (addrinfo-socktype a))
            (integer->protocol-type (addrinfo-protocol a))
@@ -129,9 +130,10 @@
    (ai-socktype ai)
    (ai-protocol ai)
    ;; TMP Store sockaddr struct in a blob on the heap.
-   (let ((b (make-blob (ai-addrlen ai))))
-     (move-memory! (ai-addr ai) b (blob-size b))
-     (make-locative b))
+   (and (ai-addr ai)
+        (let ((b (make-blob (ai-addrlen ai))))
+          (move-memory! (ai-addr ai) b (blob-size b))
+          (make-locative b)))
    (ai-canonname ai)))
 (define (ai-list->addrinfo ai)        ;; note that #f is accepted
   (let loop ((ai ai)
