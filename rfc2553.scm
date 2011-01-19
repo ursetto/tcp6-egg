@@ -124,9 +124,12 @@
    (ai-family ai)
    (ai-socktype ai)
    (ai-protocol ai)
-   (ai-addr ai)           ;; fixme; 
+   ;; TMP Store sockaddr struct in a blob on the heap.
+   (let ((b (make-blob (ai-addrlen ai))))
+     (move-memory! (ai-addr ai) b (blob-size b))
+     (make-locative b))
    (ai-canonname ai)))
-(define (ai-list->addrinfo ai)
+(define (ai-list->addrinfo ai)        ;; note that #f is accepted
   (let loop ((ai ai)
              (L '()))
     (if ai
@@ -170,6 +173,8 @@
   (foreign-lambda void freeaddrinfo ai))
 (define gai_strerror (foreign-lambda c-string "gai_strerror" int))
 
+(define-foreign-variable eai/noname int "EAI_NONAME")
+
 (define (getaddrinfo node)   ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((service #f)
@@ -182,8 +187,17 @@
         (when hints (free-ai hints))
         (cond ((= 0 rc)
                res)
+              ((= eai/noname rc)  ;; save errors for real errors
+               #f)
               (else
-               (error 'getaddrinfo (gai_strerror rc))))))))
+               (when res (freeaddrinfo res))   ;; correct??
+               (error 'getaddrinfo (gai_strerror rc) node)))))))
+
+(define (address-information node)
+  (let* ((ai (getaddrinfo node))
+         (addrinfo (ai-list->addrinfo ai)))
+    (when ai (freeaddrinfo ai)) 
+    addrinfo))
 
 #|
 
