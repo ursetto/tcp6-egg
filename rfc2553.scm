@@ -43,7 +43,8 @@
 (define ipproto/tcp IPPROTO_TCP)
 (define ipproto/udp IPPROTO_UDP)
 
-(define-foreign-variable ai/canonname int "AI_CANONNAME")
+(define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
+(define ai/canonname AI_CANONNAME)
 
 (define-foreign-record-type (sockaddr "struct sockaddr")
   (int sa_family sockaddr-family))
@@ -178,14 +179,15 @@
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
 
-(define (getaddrinfo node)   ;; must call freeaddrinfo on result
+(define (getaddrinfo node #!key family socktype protocol flags) ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((service #f)
           (hints #f))
       (define hints (make-null-ai))
-;;      (set-ai-family! hints af/inet6)
-;;      (set-ai-socktype! hints sock/stream)
-      (set-ai-flags! hints ai/canonname)
+      (when family (set-ai-family! hints family))
+      (when socktype (set-ai-socktype! hints socktype))
+      (when flags (set-ai-flags! hints flags))
+      (when protocol (set-ai-protocol! hints protocol))
       (let ((rc (_getaddrinfo node service hints #$res)))
         (when hints (free-ai hints))
         (cond ((= 0 rc)
