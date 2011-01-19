@@ -198,8 +198,8 @@
                (when res (freeaddrinfo res))   ;; correct??
                (error 'getaddrinfo (gai_strerror rc) node)))))))
 
-(define (address-information node)
-  (let* ((ai (getaddrinfo node))
+(define (address-information node . keys)
+  (let* ((ai (apply getaddrinfo node keys))
          (addrinfo (ai-list->addrinfo ai)))
     (when ai (freeaddrinfo ai)) 
     addrinfo))
