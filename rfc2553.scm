@@ -179,10 +179,9 @@
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
 
-(define (getaddrinfo node #!key family socktype protocol flags) ;; must call freeaddrinfo on result
+(define (getaddrinfo node #!key family socktype protocol flags service) ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
-    (let ((service #f)
-          (hints #f))
+    (let ((hints #f))
       (define hints (make-null-ai))
       (when family (set-ai-family! hints family))
       (when socktype (set-ai-socktype! hints socktype))
