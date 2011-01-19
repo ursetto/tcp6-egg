@@ -47,23 +47,23 @@
 (define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
 (define ai/canonname AI_CANONNAME)
 
-(define-foreign-record-type (sockaddr "struct sockaddr")
-  (int sa_family sockaddr-family))
+(define-foreign-record-type (sa "struct sockaddr")
+  (int sa_family sa-family))
 
-(define-foreign-record-type (sockaddr-in "struct sockaddr_in")
-  (int sin_family sockaddr-in-family)
-  (int sin_port sockaddr-in-port)
-  ((struct "in_addr") sin_addr sockaddr-in-addr))
+(define-foreign-record-type (sin "struct sockaddr_in")
+  (int sin_family sin-family)
+  (int sin_port sin-port)
+  ((struct "in_addr") sin_addr sin-addr))
 
-(define-foreign-record-type (sockaddr-in6 "struct sockaddr_in6")
-  (constructor: make-sockaddr-in6)
-  (destructor: free-sockaddr-in6)
+(define-foreign-record-type (sin6 "struct sockaddr_in6")
+  (constructor: make-sin6)
+  (destructor: free-sin6)
   ;; sin6_len is not universally provided
-  (int sin6_family sockaddr-in6-family)
-  (int sin6_port sockaddr-in6-port)  
-  (integer sin6_flowinfo sockaddr-in6-flowinfo)
-  ((struct "in6_addr") sin6_addr sockaddr-in6-addr)
-  (integer sin6_scope_id sockaddr-in6-scope-id)
+  (int sin6_family sin6-family)
+  (int sin6_port sin6-port)  
+  (integer sin6_flowinfo sin6-flowinfo)
+  ((struct "in6_addr") sin6_addr sin6-addr)
+  (integer sin6_scope_id sin6-scope-id)
 )
 
 ;; (define-foreign-record-type (in-addr "struct in_addr")
@@ -88,8 +88,8 @@
 (define (inet-address a)
   (c-pointer->u8vector (in-addr-s a) 4))
 
-;; ex. (inet6-address (sockaddr-in6-addr (ai-addr (getaddrinfo "fe80::1%en0"))))
-;; ex. (ip->string (inet6-address (sockaddr-in6-addr (ai-addr (getaddrinfo "ipv6.3e8.org")))))
+;; ex. (inet6-address (sin6-addr (ai-addr (getaddrinfo "fe80::1%en0"))))
+;; ex. (ip->string (inet6-address (sin6-addr (ai-addr (getaddrinfo "ipv6.3e8.org")))))
 ;;     path can be shortened, e.g. ((sockaddr_in6*)ai_addr)->sin6_addr.s6_addr
 
 (define-foreign-record-type (ai "struct addrinfo")
@@ -100,7 +100,7 @@
   (int ai_socktype ai-socktype set-ai-socktype!)
   (int ai_protocol ai-protocol set-ai-protocol!)  
   (int ai_addrlen ai-addrlen)
-  ((c-pointer sockaddr) ai_addr ai-addr)  ;; non-null?
+  ((c-pointer sa) ai_addr ai-addr)  ;; non-null?
   (c-string ai_canonname ai-canonname)
   ((c-pointer ai) ai_next ai-next))
 
@@ -110,9 +110,9 @@
   (fprintf out "#<addrinfo ~S ~S ~S ~S~A>"
            (let ((F (addrinfo-family a)))
              (cond ((eqv? F af/inet6)
-                    (ip->string (inet6-address (sockaddr-in6-addr (addrinfo-address a)))))
+                    (ip->string (inet6-address (sin6-addr (addrinfo-address a)))))
                    ((eqv? F af/inet)
-                    (ip->string (inet-address (sockaddr-in-addr (addrinfo-address a)))))
+                    (ip->string (inet-address (sin-addr (addrinfo-address a)))))
                    (else '?)))
            (integer->address-family (addrinfo-family a))
            (integer->socket-type (addrinfo-socktype a))
@@ -135,7 +135,7 @@
           (move-memory! (ai-addr ai) b (blob-size b))
           (make-locative b)))
    (ai-canonname ai)))
-(define (ai-list->addrinfo ai)        ;; note that #f is accepted
+(define (ai-list->addrinfo ai)        ;; note that #f -> '()
   (let loop ((ai ai)
              (L '()))
     (if ai
@@ -152,9 +152,9 @@
              ;;      (addrlen ,(ai-addrlen a))
              ,(let ((F (ai-family a)))
                 (cond ((eqv? F af/inet6)
-                       `(address ,(ip->string (inet6-address (sockaddr-in6-addr (ai-addr a))))))
+                       `(address ,(ip->string (inet6-address (sin6-addr (ai-addr a))))))
                       ((eqv? F af/inet)
-                       `(address ,(ip->string (inet-address (sockaddr-in-addr (ai-addr a))))))
+                       `(address ,(ip->string (inet-address (sin-addr (ai-addr a))))))
                       (else `(address ?))))
              (flags ,(ai-flags a))
              ,@(let ((cn (ai-canonname a)))
