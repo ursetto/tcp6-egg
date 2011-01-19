@@ -139,7 +139,7 @@
     (if ai
         (loop (ai-next ai)
               (cons (ai->addrinfo ai) L))
-        L)))
+        (reverse L))))
 
 #|
 (define (debug-ai a)
