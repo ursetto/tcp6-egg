@@ -10,16 +10,6 @@
 #include <netdb.h>
 ")
 
-;; (define-foreign-type sockaddr* (pointer "struct sockaddr"))
-;; (define-foreign-type sockaddr_in* (pointer "struct sockaddr_in"))
-;; (define-foreign-type sockaddr_in6* (pointer "struct sockaddr_in6"))
-;;(define-foreign-type in6_addr )
-
-;; (define-foreign-variable _af_inet int "AF_INET")
-;; (define-foreign-variable _af_inet6 int "AF_INET6")
-;; (define af/inet _af_inet)
-;; (define af/inet6 _af_inet6)
-
 (define-foreign-enum-type (address-family int)
   (address-family->integer integer->address-family)
   ((af/unspec AF_UNSPEC) AF_UNSPEC)
