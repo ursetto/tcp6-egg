@@ -98,9 +98,9 @@
   (int ai_socktype ai-socktype set-ai-socktype!)
   (int ai_protocol ai-protocol set-ai-protocol!)  
   (int ai_addrlen ai-addrlen)
-  ((c-pointer (struct "sockaddr")) ai_addr ai-addr)  ;; non-null?
+  ((c-pointer sockaddr) ai_addr ai-addr)  ;; non-null?
   (c-string ai_canonname ai-canonname)
-  ((c-pointer (struct "addrinfo")) ai_next ai-next))
+  ((c-pointer ai) ai_next ai-next))
 
 (define (debug-ai a)
   (and a
