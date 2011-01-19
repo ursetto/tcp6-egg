@@ -86,68 +86,68 @@
 (define (inet-address a)
   (c-pointer->u8vector (in-addr-s a) 4))
 
-;; ex. (inet6-address (sockaddr-in6-addr (addrinfo-addr (getaddrinfo "fe80::1%en0"))))
-;; ex. (ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr (getaddrinfo "ipv6.3e8.org")))))
+;; ex. (inet6-address (sockaddr-in6-addr (ai-addr (getaddrinfo "fe80::1%en0"))))
+;; ex. (ip->string (inet6-address (sockaddr-in6-addr (ai-addr (getaddrinfo "ipv6.3e8.org")))))
 ;;     path can be shortened, e.g. ((sockaddr_in6*)ai_addr)->sin6_addr.s6_addr
 
-(define-foreign-record-type (addrinfo "struct addrinfo")
-  (constructor: make-addrinfo)
-  (destructor: free-addrinfo)   ; similar name!
-  (int ai_flags addrinfo-flags set-addrinfo-flags!)
-  (int ai_family addrinfo-family set-addrinfo-family!)
-  (int ai_socktype addrinfo-socktype set-addrinfo-socktype!)
-  (int ai_protocol addrinfo-protocol set-addrinfo-protocol!)  
-  (int ai_addrlen addrinfo-addrlen)
-  ((c-pointer (struct "sockaddr")) ai_addr addrinfo-addr)  ;; non-null?
-  (c-string ai_canonname addrinfo-canonname)
-  ((c-pointer (struct "addrinfo")) ai_next addrinfo-next))
+(define-foreign-record-type (ai "struct addrinfo")
+  (constructor: make-ai)
+  (destructor: free-ai)   ; similar name!
+  (int ai_flags ai-flags set-ai-flags!)
+  (int ai_family ai-family set-ai-family!)
+  (int ai_socktype ai-socktype set-ai-socktype!)
+  (int ai_protocol ai-protocol set-ai-protocol!)  
+  (int ai_addrlen ai-addrlen)
+  ((c-pointer (struct "sockaddr")) ai_addr ai-addr)  ;; non-null?
+  (c-string ai_canonname ai-canonname)
+  ((c-pointer (struct "addrinfo")) ai_next ai-next))
 
-(define (debug-addrinfo a)
+(define (debug-ai a)
   (and a
-       (pp `((family ,(integer->address-family (addrinfo-family a)))
-             (socktype ,(integer->socket-type (addrinfo-socktype a)))
-             (protocol ,(integer->protocol-type (addrinfo-protocol a)))
-             ;;      (addrlen ,(addrinfo-addrlen a))
-             ,(let ((F (addrinfo-family a)))
+       (pp `((family ,(integer->address-family (ai-family a)))
+             (socktype ,(integer->socket-type (ai-socktype a)))
+             (protocol ,(integer->protocol-type (ai-protocol a)))
+             ;;      (addrlen ,(ai-addrlen a))
+             ,(let ((F (ai-family a)))
                 (cond ((eqv? F af/inet6)
-                       `(address ,(ip->string (inet6-address (sockaddr-in6-addr (addrinfo-addr a))))))
+                       `(address ,(ip->string (inet6-address (sockaddr-in6-addr (ai-addr a))))))
                       ((eqv? F af/inet)
-                       `(address ,(ip->string (inet-address (sockaddr-in-addr (addrinfo-addr a))))))
+                       `(address ,(ip->string (inet-address (sockaddr-in-addr (ai-addr a))))))
                       (else `(address ?))))
-             (flags ,(addrinfo-flags a))
-             ,@(let ((cn (addrinfo-canonname a)))
+             (flags ,(ai-flags a))
+             ,@(let ((cn (ai-canonname a)))
                  (if cn `((canonname ,cn)) '()))))))
-(define (debug-addrinfo-list A)
+(define (debug-ai-list A)
   (let loop ((A A))
     (when A
-      (debug-addrinfo A)
-      (loop (addrinfo-next A)))))
+      (debug-ai A)
+      (loop (ai-next A)))))
 
-(define (make-null-addrinfo)
-  (let ((null! (foreign-lambda* void ((addrinfo ai))
+(define (make-null-ai)
+  (let ((null! (foreign-lambda* void ((ai ai))
                  "memset(ai,0,sizeof(*ai));"
                  ))
-        (ai (make-addrinfo)))
+        (ai (make-ai)))
     (null! ai)
     ai))
 (define _getaddrinfo
   (foreign-lambda int getaddrinfo c-string c-string
-                  addrinfo
-                  (c-pointer addrinfo)))
+                  ai
+                  (c-pointer ai)))
 (define freeaddrinfo
-  (foreign-lambda void freeaddrinfo addrinfo))
+  (foreign-lambda void freeaddrinfo ai))
 (define gai_strerror (foreign-lambda c-string "gai_strerror" int))
 
 (define (getaddrinfo node)   ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((service #f)
           (hints #f))
-      (define hints (make-null-addrinfo))
-      ;;(set-addrinfo-family! hints af/inet6)
-;;      (set-addrinfo-socktype! hints sock/stream)
-      (set-addrinfo-flags! hints ai/canonname)
+      (define hints (make-null-ai))
+      ;;(set-ai-family! hints af/inet6)
+;;      (set-ai-socktype! hints sock/stream)
+      (set-ai-flags! hints ai/canonname)
       (let ((rc (_getaddrinfo node service hints #$res)))
-        (when hints (free-addrinfo hints))
+        (when hints (free-ai hints))
         (cond ((= 0 rc)
                res)
               (else
