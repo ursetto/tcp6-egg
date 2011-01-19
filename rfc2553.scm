@@ -138,6 +138,7 @@
               (cons (ai->addrinfo ai) L))
         L)))
 
+#|
 (define (debug-ai a)
   (and a
        (pp `((family ,(integer->address-family (ai-family a)))
@@ -158,6 +159,7 @@
     (when A
       (debug-ai A)
       (loop (ai-next A)))))
+|#
 
 (define (make-null-ai)
   (let ((null! (foreign-lambda* void ((ai ai))
