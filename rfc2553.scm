@@ -102,6 +102,38 @@
   (c-string ai_canonname ai-canonname)
   ((c-pointer ai) ai_next ai-next))
 
+(define-record addrinfo
+  flags family socktype protocol address canonname)
+(define-record-printer (addrinfo a out)
+  (fprintf out "#<addrinfo ~S ~S ~S ~S canonical: ~S flags: ~S>"
+           (let ((F (addrinfo-family a)))
+             (cond ((eqv? F af/inet6)
+                    (ip->string (inet6-address (sockaddr-in6-addr (addrinfo-address a)))))
+                   ((eqv? F af/inet)
+                    (ip->string (inet-address (sockaddr-in-addr (addrinfo-address a)))))
+                   (else "?")))
+           (integer->address-family (addrinfo-family a))
+           (integer->socket-type (addrinfo-socktype a))
+           (integer->protocol-type (addrinfo-protocol a))
+           (addrinfo-canonname a)
+           (addrinfo-flags a)))
+
+(define (ai->addrinfo ai)
+  (make-addrinfo
+   (ai-flags ai)
+   (ai-family ai)
+   (ai-socktype ai)
+   (ai-protocol ai)
+   (ai-addr ai)           ;; fixme; 
+   (ai-canonname ai)))
+(define (ai-list->addrinfo ai)
+  (let loop ((ai ai)
+             (L '()))
+    (if ai
+        (loop (ai-next ai)
+              (cons (ai->addrinfo ai) L))
+        L)))
+
 (define (debug-ai a)
   (and a
        (pp `((family ,(integer->address-family (ai-family a)))
