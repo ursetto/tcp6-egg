@@ -167,9 +167,7 @@
     (null! ai)
     ai))
 (define _getaddrinfo
-  (foreign-lambda int getaddrinfo c-string c-string
-                  ai
-                  (c-pointer ai)))
+    (foreign-lambda int getaddrinfo c-string c-string ai (c-pointer ai)))
 (define freeaddrinfo
   (foreign-lambda void freeaddrinfo ai))
 (define gai_strerror (foreign-lambda c-string "gai_strerror" int))
@@ -181,14 +179,14 @@
     (let ((service #f)
           (hints #f))
       (define hints (make-null-ai))
-      ;;(set-ai-family! hints af/inet6)
+;;      (set-ai-family! hints af/inet6)
 ;;      (set-ai-socktype! hints sock/stream)
       (set-ai-flags! hints ai/canonname)
       (let ((rc (_getaddrinfo node service hints #$res)))
         (when hints (free-ai hints))
         (cond ((= 0 rc)
                res)
-              ((= eai/noname rc)  ;; save errors for real errors
+              ((= eai/noname rc)  ;; save exceptions for real errors
                #f)
               (else
                (when res (freeaddrinfo res))   ;; correct??
