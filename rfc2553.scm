@@ -4,6 +4,26 @@
 ;;    however, chicken tcp does not set this member.  In general, you should obtain the
 ;;    sockaddr from getaddrinfo() etc.
 
+#|
+sockaddr impl
+  python:
+   sockaddr args are accepted and returned as plain tuples.  length varies based on struct size,
+     e.g. af_inet is 2 args (host, port)
+          af_inet6 is 4 args (host, port, flowinfo, scope_id) or 2 args (host, port)
+          af_unix is 1 arg (path,)
+     Address family is NOT included in the sockaddr tuple, except implicitly:
+       - For procs that take a socket s, such as s.connect(sockaddr), the tuple/address
+         format is dictated by the socket creation params (a AF_INET6 socket requires a 4-tuple).
+       - For procs that just take a sockaddr, such as socket.getnameinfo(sockaddr),
+         UNKNOWN.
+   Additionally anything that takes a sockaddr appears to allow a nodename instead of address,
+     oddly including "getnameinfo".  Automatic resolution is done beforehand (making this
+     a noop).  In the case of getnameinfo, resolving to multiple sockaddrs is an error.
+     In the case of s.connect, it will connect to the first one (apparently; this is
+       untested, and unknown if python can connect to each in a row).  Certainly you cannot
+       connect to both ipv6 and ipv4 with the same socket.
+   
+|#
 (use foreigners)
 (use srfi-4)
 (use hostinfo) ;; temporary -- for ip->string
@@ -38,7 +58,11 @@
 (define ipproto/udp IPPROTO_UDP)
 
 (define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
+(define-foreign-variable AI_NUMERICHOST int "AI_NUMERICHOST")
+(define-foreign-variable AI_PASSIVE int "AI_PASSIVE")
 (define ai/canonname AI_CANONNAME)
+(define ai/numerichost AI_NUMERICHOST)
+(define ai/passive AI_PASSIVE)
 (define-foreign-variable ni/maxhost int "NI_MAXHOST")
 (define-foreign-variable ni/maxserv int "NI_MAXSERV")
 
