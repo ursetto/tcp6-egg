@@ -39,9 +39,24 @@
 
 (define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
 (define ai/canonname AI_CANONNAME)
+(define-foreign-variable ni/maxhost int "NI_MAXHOST")
+(define-foreign-variable ni/maxserv int "NI_MAXSERV")
 
 (define-foreign-record-type (sa "struct sockaddr")
   (int sa_family sa-family))
+
+;; May be no point to separating these if the user must always
+;; test the socket family and then call the proper accessors.
+(define-record sockaddr
+  family specific)
+(define-record sockaddr-in
+  port addr)
+(define-record sockaddr-in6
+  port addr flowinfo scope-id)
+
+;; (define (sa->sockaddr sa)
+;;   (sa-family)
+;;   )
 
 (define-foreign-record-type (sin "struct sockaddr_in")
   (int sin_family sin-family)
@@ -170,10 +185,13 @@
     (foreign-lambda int getaddrinfo c-string c-string ai (c-pointer ai)))
 (define freeaddrinfo
   (foreign-lambda void freeaddrinfo ai))
+(define _getnameinfo
+  (foreign-lambda int getnameinfo sa int scheme-pointer int scheme-pointer int int))
 (define gai_strerror (foreign-lambda c-string "gai_strerror" int))
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
 
+;; I dunno, maybe getaddrinfo should take a bare addrinfo hints struct
 (define (getaddrinfo node #!key family socktype protocol flags service) ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((hints #f))
@@ -197,6 +215,16 @@
          (addrinfo (ai-list->addrinfo ai)))
     (when ai (freeaddrinfo ai)) 
     addrinfo))
+
+(define (getnameinfo sa salen flags)
+  (let ((node (make-string ni/maxhost))
+        (serv (make-string ni/maxserv)))
+    (let ((rc (_getnameinfo sa salen node (string-length node) serv (string-length serv) flags)))
+      (cond ((= rc 0)
+             (values (substring node 0 (string-index node #\nul))
+                     (substring serv 0 (string-index serv #\nul))))
+            (else
+             (error 'getnameinfo (gai_strerror rc)))))))
 
 #|
 
