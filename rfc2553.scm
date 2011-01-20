@@ -58,6 +58,7 @@
 ;;   (sa-family)
 ;;   )
 
+;; FIXME!! Port and flowinfo require network->host endian translation.
 (define-foreign-record-type (sin "struct sockaddr_in")
   (int sin_family sin-family)
   (int sin_port sin-port)
@@ -68,11 +69,15 @@
   (destructor: free-sin6)
   ;; sin6_len is not universally provided
   (int sin6_family sin6-family)
-  (int sin6_port sin6-port)  
-  (integer sin6_flowinfo sin6-flowinfo)
+;;(int sin6_port sin6-port)  
+;;(unsigned-integer sin6_flowinfo sin6-flowinfo)
   ((struct "in6_addr") sin6_addr sin6-addr)
   (integer sin6_scope_id sin6-scope-id)
 )
+(define sin6-port
+  (foreign-lambda* int ((sin6 s)) "C_return(ntohs(s->sin6_port));"))
+(define sin6-flowinfo
+  (foreign-lambda* unsigned-integer ((sin6 s)) "C_return(ntohl(s->sin6_flowinfo));"))
 
 ;; (define-foreign-record-type (in-addr "struct in_addr")
 ;;   (c-pointer s_addr in-addr-s))
