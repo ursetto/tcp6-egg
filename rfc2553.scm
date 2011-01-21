@@ -49,7 +49,7 @@
 (define-record sockaddr
   family blob)
 
-(define (sa->sockaddr sa len)
+(define (sa->sockaddr sa len)    ;; sa -- c-pointer; len -- length of sockaddr struct
   (make-sockaddr (sa-family sa)
                  (let ((b (make-blob len)))
                    ((foreign-lambda void C_memcpy scheme-pointer c-pointer int)
@@ -66,6 +66,8 @@
     (getnameinfo (make-locative b)
                  (blob-size b)
                  ni/numerichost)))
+(define (sockaddr-len A)
+  (blob-size (sockaddr-blob A)))
 
 (define-record-printer (sockaddr A out)
   (fprintf out "#<sockaddr ~A>"
@@ -134,12 +136,13 @@
   flags family socktype protocol address canonname)
 (define-record-printer (addrinfo a out)
   (fprintf out "#<addrinfo ~S ~S ~S ~S~A>"
-           (let ((F (addrinfo-family a)))
-             (cond ((eqv? F af/inet6)
-                    (ip->string (inet6-address (sin6-addr (addrinfo-address a)))))
-                   ((eqv? F af/inet)
-                    (ip->string (inet-address (sin-addr (addrinfo-address a)))))
-                   (else '?)))
+           ;; (let ((F (addrinfo-family a)))
+           ;;   (cond ((eqv? F af/inet6)
+           ;;          (ip->string (inet6-address (sin6-addr (addrinfo-address a)))))
+           ;;         ((eqv? F af/inet)
+           ;;          (ip->string (inet-address (sin-addr (addrinfo-address a)))))
+           ;;         (else '?)))
+           (addrinfo-address a)
            (integer->address-family (addrinfo-family a))
            (integer->socket-type (addrinfo-socktype a))
            (integer->protocol-type (addrinfo-protocol a))
@@ -155,11 +158,8 @@
    (ai-family ai)
    (ai-socktype ai)
    (ai-protocol ai)
-   ;; TMP Store sockaddr struct in a blob on the heap.
-   (and (ai-addr ai)
-        (let ((b (make-blob (ai-addrlen ai))))
-          (move-memory! (ai-addr ai) b (blob-size b))
-          (make-locative b)))
+   (and (ai-addr ai)   ;; necessary check?
+        (sa->sockaddr (ai-addr ai) (ai-addrlen ai)))
    (ai-canonname ai)))
 (define (ai-list->addrinfo ai)        ;; note that #f -> '()
   (let loop ((ai ai)
@@ -204,7 +204,7 @@
 (define freeaddrinfo
   (foreign-lambda void freeaddrinfo ai))
 (define _getnameinfo
-  (foreign-lambda int getnameinfo sa int scheme-pointer int scheme-pointer int int))
+  (foreign-lambda int getnameinfo scheme-pointer int scheme-pointer int scheme-pointer int int))
 (define gai_strerror (foreign-lambda c-string "gai_strerror" int))
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
@@ -234,15 +234,19 @@
     (when ai (freeaddrinfo ai)) 
     addrinfo))
 
-(define (getnameinfo sa salen flags)
-  (let ((node (make-string ni/maxhost))
-        (serv (make-string ni/maxserv)))
-    (let ((rc (_getnameinfo sa salen node (string-length node) serv (string-length serv) flags)))
-      (cond ((= rc 0)
-             (values (substring node 0 (string-index node #\nul))
-                     (substring serv 0 (string-index serv #\nul))))
-            (else
-             (error 'getnameinfo (gai_strerror rc)))))))
+(define (getnameinfo saddr flags)
+  (let* ((sa (sockaddr-blob saddr))
+         (salen (sockaddr-len saddr)))
+    (let ((node (make-string ni/maxhost))
+          (serv (make-string ni/maxserv)))
+      (let ((rc (_getnameinfo sa salen
+                              node (string-length node)
+                              serv (string-length serv) flags)))
+        (cond ((= rc 0)
+               (values (substring node 0 (string-index node #\nul))
+                       (substring serv 0 (string-index serv #\nul))))
+              (else
+               (error 'getnameinfo (gai_strerror rc))))))))
 
 #|
 
