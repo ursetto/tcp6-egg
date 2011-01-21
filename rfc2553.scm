@@ -294,22 +294,31 @@
       (when ai (freeaddrinfo ai)) 
       addrinfo)))
 
+;; Constructor for socket address object from IP address string & SERVICE number.
+;; The usual way to create such an address is via address-information; this is
+;; a slightly more efficient shortcut.
+;; FIXME: The name is suspect.
+(define (inet-sockaddr ip #!optional service)   ;; Not sure if optional service makes sense.
+  (let ((service (and service (number->string service))))
+    (and-let* ((ai (getaddrinfo ip service #f #f #f AI_NUMERICHOST))  ;; + AI_NUMERICSERV
+               (adi (ai->addrinfo ai)))
+      (freeaddrinfo ai)
+      (addrinfo-address adi))))
+
 ;; ADDR is either a SOCKADDR object, or an IPv4 or IPv6 string.
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
 ;; Note: Should add AI_NUMERICSERV to getaddrinfo call, but it may not be portable.
+;; Note: Perhaps service should be mandatory.
 (define (name-information addr #!key (service #f) (flags 0))
   (cond
    ((sockaddr? addr)
-    (getnameinfo addr flags))
+    (getnameinfo addr flags))   ; service ignored
    (else
-    (let ((service (if (integer? service) (number->string service) service)))
-      (and-let* ((ai (getaddrinfo addr service #f #f #f AI_NUMERICHOST))
-                 (adi (ai->addrinfo ai)))
-        (freeaddrinfo ai)    
-        (let* ((ni (getnameinfo (addrinfo-address adi) flags)))
-          (cond ((string->number (cdr ni))
-                 => (lambda (p) (cons (car ni) p)))
-                (else ni))))))))
+    (let ((saddr (inet-sockaddr addr service)))
+      (let* ((ni (getnameinfo saddr flags)))
+        (cond ((string->number (cdr ni))
+               => (lambda (p) (cons (car ni) p)))
+              (else ni)))))))
 
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
