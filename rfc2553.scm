@@ -286,23 +286,29 @@
 
 ;; FIXME: getaddrinfo should return the addrinfo list in scheme itself.  But keeping
 ;; raw ai struct is useful if you only want one value, as in name-information
+;; FIXME: service should accept numbers
 (define (address-information node . keys)
   (let* ((ai (apply getaddrinfo node keys))
          (addrinfo (ai-list->addrinfo ai)))
     (when ai (freeaddrinfo ai)) 
     addrinfo))
 
+;; ADDR is either a SOCKADDR object, or an IPv4 or IPv6 string.
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
 ;; Note: Should add AI_NUMERICSERV to getaddrinfo call, but it may not be portable.
 (define (name-information addr #!key (service #f) (flags 0))
-  (let ((service (if (integer? service) (number->string service) service)))
-    (and-let* ((ai (getaddrinfo addr service: service flags: AI_NUMERICHOST))
-               (adi (ai->addrinfo ai)))
-      (freeaddrinfo ai)    
-      (let* ((ni (getnameinfo (addrinfo-address adi) flags)))
-        (cond ((string->number (cdr ni))
-               => (lambda (p) (cons (car ni) p)))
-              (else ni))))))
+  (cond
+   ((sockaddr? addr)
+    (getnameinfo addr flags))
+   (else
+    (let ((service (if (integer? service) (number->string service) service)))
+      (and-let* ((ai (getaddrinfo addr service: service flags: AI_NUMERICHOST))
+                 (adi (ai->addrinfo ai)))
+        (freeaddrinfo ai)    
+        (let* ((ni (getnameinfo (addrinfo-address adi) flags)))
+          (cond ((string->number (cdr ni))
+                 => (lambda (p) (cons (car ni) p)))
+                (else ni))))))))
 
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
