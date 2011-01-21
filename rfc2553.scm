@@ -42,8 +42,8 @@
 (define ai/canonname AI_CANONNAME)
 (define ai/numerichost AI_NUMERICHOST)
 (define ai/passive AI_PASSIVE)
-(define-foreign-variable ni/maxhost int "NI_MAXHOST")
-(define-foreign-variable ni/maxserv int "NI_MAXSERV")
+(define-foreign-variable NI_MAXHOST int "NI_MAXHOST")
+(define-foreign-variable NI_MAXSERV int "NI_MAXSERV")
 
 (define-foreign-variable NI_NUMERICHOST int "NI_NUMERICHOST")
 (define-foreign-variable NI_NUMERICSERV int "NI_NUMERICSERV")
@@ -250,11 +250,11 @@
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
          (salen (sockaddr-len saddr)))
-    (let ((node (make-string ni/maxhost))
-          (serv (make-string ni/maxserv)))
+    (let ((node (make-string NI_MAXHOST))
+          (serv (make-string NI_MAXSERV)))
       (let ((rc (_getnameinfo sa salen
-                              node (string-length node)
-                              serv (string-length serv) flags)))
+                              node NI_MAXHOST
+                              serv NI_MAXSERV flags)))
         (cond ((= rc 0)
                (cons (substring node 0 (string-index node #\nul))
                      (substring serv 0 (string-index serv #\nul))))
