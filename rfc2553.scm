@@ -82,7 +82,7 @@
   (let ((af (sockaddr-family A)))
     (cond ((or (= af AF_INET)
                (= af AF_INET6))
-           (vector-ref (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV)) 0))
+           (car (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV))))
           ((= af AF_LOCAL)
            (sockaddr-path A))
           (else #f))))
@@ -106,8 +106,8 @@
     (cond ((or (= af AF_INET)
                (= af AF_INET6))
            (let* ((ni (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV)))
-                  (h (vector-ref ni 0))
-                  (p (vector-ref ni 1)))
+                  (h (car ni))
+                  (p (cdr ni)))
              (if (string=? p "0")
                  h
                  (if (= af AF_INET6)
@@ -291,16 +291,17 @@
          (addrinfo (ai-list->addrinfo ai)))
     (when ai (freeaddrinfo ai)) 
     addrinfo))
-;; FIXME: May want to convert returned port to number if numeric
-;; FIXME: Will return 2 values on success or 1 value (#f) on failure!
+
+;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
+;; Note: Should add AI_NUMERICSERV to getaddrinfo call, but it may not be portable.
 (define (name-information addr #!key (service #f) (flags 0))
   (let ((service (if (integer? service) (number->string service) service)))
     (and-let* ((ai (getaddrinfo addr service: service flags: AI_NUMERICHOST))
                (adi (ai->addrinfo ai)))
       (freeaddrinfo ai)    
       (let* ((ni (getnameinfo (addrinfo-address adi) flags)))
-        (cond ((string->number (vector-ref ni 1))
-               => (lambda (p) (vector (vector-ref ni 0) p)))
+        (cond ((string->number (cdr ni))
+               => (lambda (p) (cons (car ni) p)))
               (else ni))))))
 
 (define (getnameinfo saddr flags)
@@ -312,8 +313,8 @@
                               node (string-length node)
                               serv (string-length serv) flags)))
         (cond ((= rc 0)
-               (vector (substring node 0 (string-index node #\nul))
-                       (substring serv 0 (string-index serv #\nul))))
+               (cons (substring node 0 (string-index node #\nul))
+                     (substring serv 0 (string-index serv #\nul))))
               (else
                (error 'getnameinfo (gai_strerror rc))))))))
 
