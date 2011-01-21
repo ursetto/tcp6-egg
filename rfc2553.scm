@@ -8,6 +8,8 @@
 #include <netdb.h>
 ")
 
+;;; constants
+
 (define-foreign-enum-type (address-family int)
   (address-family->integer integer->address-family)
   ((af/unspec AF_UNSPEC) AF_UNSPEC)
@@ -54,11 +56,12 @@
 (define ni/namereqd NI_NAMEREQD)
 (define ni/nofqdn NI_NOFQDN)
 
+;;;
+
 (define-foreign-record-type (sa "struct sockaddr")
   (int sa_family sa-family))
 
-(define-record sockaddr
-  family blob)
+(define-record sockaddr family blob)
 
 (define (sa->sockaddr sa len)    ;; sa -- c-pointer; len -- length of sockaddr struct
   (make-sockaddr (sa-family sa)
@@ -67,13 +70,9 @@
                     b sa len)
                    b)))
 
-;; (define (sa->sockaddr sa)
-;;   (sa-family)
-;;   )
-
 (define (sockaddr-len A)
   (blob-size (sockaddr-blob A)))
-;; (define (sockaddr-path A)
+;; (define (sockaddr-path A)          ;; not supported on Windows
 ;;   ((foreign-lambda* c-string ((scheme-pointer sa))
 ;;      "switch (((struct sockaddr*)sa)->sa_family) {"
 ;;      "case AF_LOCAL: C_return(((struct sockaddr_un*)sa)->sun_path);"
@@ -83,7 +82,6 @@
 (define (sockaddr-path A)
   (error 'sockaddr-path "UNIX sockets are not supported"))
 
-;;(define (sockaddr-port A))
 (define (sockaddr-address A)
   (let ((af (sockaddr-family A)))
     (cond ((or (= af AF_INET)
@@ -124,61 +122,12 @@
           (else
            #f))))
 
-;; Intent of this is a direct call to getnameinfo ala inet_ntop; however
-;; error handling is annoying.
+;; Intent of this is a direct call to getnameinfo ala inet_ntop, returning
+;; a plain string; however, error handling is hard.
 ;; (define (sockaddr->ip-string A)
 ;;   (foreign-lambda* c-string ((scheme-pointer sa))
 ;;     ""
-;;     )
-  
-;;   )
-
-;; FIXME!! Port and flowinfo require network->host endian translation.
-(define-foreign-record-type (sin "struct sockaddr_in")
-  (int sin_family sin-family)
-  (int sin_port sin-port)
-  ((struct "in_addr") sin_addr sin-addr))
-
-(define-foreign-record-type (sin6 "struct sockaddr_in6")
-  (constructor: alloc-sin6)
-  (destructor: free-sin6)
-  ;; sin6_len is not universally provided
-  (int sin6_family sin6-family)
-;;(int sin6_port sin6-port)  
-;;(unsigned-integer sin6_flowinfo sin6-flowinfo)
-  ((struct "in6_addr") sin6_addr sin6-addr)
-  (integer sin6_scope_id sin6-scope-id)
-)
-(define sin6-port
-  (foreign-lambda* int ((sin6 s)) "C_return(ntohs(s->sin6_port));"))
-(define sin6-flowinfo
-  (foreign-lambda* unsigned-integer ((sin6 s)) "C_return(ntohl(s->sin6_flowinfo));"))
-
-;; (define-foreign-record-type (in-addr "struct in_addr")
-;;   (c-pointer s_addr in-addr-s))
-(define-foreign-type in-addr (c-pointer (struct "in_addr")))
-(define (in-addr-s a)
-  ((foreign-lambda* c-pointer ((in-addr in))
-     "C_return(&in->s_addr);")
-   a))
-(define-foreign-record-type (in6-addr "struct in6_addr")
-  (c-pointer s6_addr in6-addr-s6))
-
-(define (c-pointer->u8vector ptr len)
-  (let ((bv (make-u8vector len))
-        (memcpy (foreign-lambda bool "C_memcpy"
-                                u8vector c-pointer integer)))  ;; scheme-pointer illegal
-    (memcpy bv ptr len)
-    bv))
-
-(define (inet6-address a)
-  (c-pointer->u8vector (in6-addr-s6 a) 16))
-(define (inet-address a)
-  (c-pointer->u8vector (in-addr-s a) 4))
-
-;; ex. (inet6-address (sin6-addr (ai-addr (getaddrinfo "fe80::1%en0"))))
-;; ex. (ip->string (inet6-address (sin6-addr (ai-addr (getaddrinfo "ipv6.3e8.org")))))
-;;     path can be shortened, e.g. ((sockaddr_in6*)ai_addr)->sin6_addr.s6_addr
+;;     ))
 
 (define-foreign-record-type (ai "struct addrinfo")
   (constructor: alloc-ai)
@@ -196,12 +145,6 @@
   flags family socktype protocol address canonname)
 (define-record-printer (addrinfo a out)
   (fprintf out "#<addrinfo ~S ~S ~S ~S~A>"
-           ;; (let ((F (addrinfo-family a)))
-           ;;   (cond ((eqv? F af/inet6)
-           ;;          (ip->string (inet6-address (sin6-addr (addrinfo-address a)))))
-           ;;         ((eqv? F af/inet)
-           ;;          (ip->string (inet-address (sin-addr (addrinfo-address a)))))
-           ;;         (else '?)))
            (sockaddr->string (addrinfo-address a))
            (integer->address-family (addrinfo-family a))
            (integer->socket-type (addrinfo-socktype a))
@@ -212,7 +155,7 @@
            ;; (addrinfo-flags a)          ;; flag display isn't that interesting
            ))
 
-(define (ai->addrinfo ai)
+(define (ai->addrinfo ai)           ;; construct addrinfo obj from ai ptr, with embedded sockaddr obj
   (make-addrinfo
    (ai-flags ai)
    (ai-family ai)
@@ -220,40 +163,17 @@
    (ai-protocol ai)
    (ai->sockaddr ai)
    (ai-canonname ai)))
-(define (ai->sockaddr ai)
+(define (ai->sockaddr ai)           ;; direct construction of sockaddr object from ai pointer
   (and-let* ((addr (ai-addr ai)))
     (sa->sockaddr addr (ai-addrlen ai))))
 
-(define (ai-list->addrinfo ai)        ;; note that #f -> '()
+(define (ai-list->addrinfo ai)      ;; construct addrinfo object list from ai linked list
   (let loop ((ai ai)
              (L '()))
     (if ai
         (loop (ai-next ai)
               (cons (ai->addrinfo ai) L))
         (reverse L))))
-
-#|
-(define (debug-ai a)
-  (and a
-       (pp `((family ,(integer->address-family (ai-family a)))
-             (socktype ,(integer->socket-type (ai-socktype a)))
-             (protocol ,(integer->protocol-type (ai-protocol a)))
-             ;;      (addrlen ,(ai-addrlen a))
-             ,(let ((F (ai-family a)))
-                (cond ((eqv? F af/inet6)
-                       `(address ,(ip->string (inet6-address (sin6-addr (ai-addr a))))))
-                      ((eqv? F af/inet)
-                       `(address ,(ip->string (inet-address (sin-addr (ai-addr a))))))
-                      (else `(address ?))))
-             (flags ,(ai-flags a))
-             ,@(let ((cn (ai-canonname a)))
-                 (if cn `((canonname ,cn)) '()))))))
-(define (debug-ai-list A)
-  (let loop ((A A))
-    (when A
-      (debug-ai A)
-      (loop (ai-next A)))))
-|#
 
 (define (alloc-null-ai)
   (let ((null! (foreign-lambda* void ((ai ai))
@@ -341,26 +261,3 @@
               (else
                (error 'getnameinfo (gai_strerror rc))))))))
 
-#|
-
-struct sockaddr_in6 {
- unsigned short  sin6_family;
- u_int16_t       sin6_port;
- u_int32_t       sin6_flowinfo;
- struct in6_addr sin6_addr;
- u_int32_t       sin6_scope_id;
-};
-
-struct addrinfo {
-        int ai_flags;           /* input flags */
-        int ai_family;          /* protocol family for socket */
-        int ai_socktype;        /* socket type */
-        int ai_protocol;        /* protocol for socket */
-        socklen_t ai_addrlen;   /* length of socket-address */
-        struct sockaddr *ai_addr; /* socket-address for socket */
-        char *ai_canonname;     /* canonical name for service location */
-        struct addrinfo *ai_next; /* pointer to next in list */
-};
-
-
-|#
