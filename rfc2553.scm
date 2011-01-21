@@ -45,8 +45,14 @@
 
 (define-foreign-variable NI_NUMERICHOST int "NI_NUMERICHOST")
 (define-foreign-variable NI_NUMERICSERV int "NI_NUMERICSERV")
+(define-foreign-variable NI_DGRAM int "NI_DGRAM")
+(define-foreign-variable NI_NAMEREQD int "NI_NAMEREQD")
+(define-foreign-variable NI_NOFQDN int "NI_NOFQDN")
 (define ni/numerichost NI_NUMERICHOST)
 (define ni/numericserv NI_NUMERICSERV)
+(define ni/dgram NI_DGRAM)
+(define ni/namereqd NI_NAMEREQD)
+(define ni/nofqdn NI_NOFQDN)
 
 (define-foreign-record-type (sa "struct sockaddr")
   (int sa_family sa-family))
@@ -212,9 +218,12 @@
    (ai-family ai)
    (ai-socktype ai)
    (ai-protocol ai)
-   (and (ai-addr ai)   ;; necessary check?
-        (sa->sockaddr (ai-addr ai) (ai-addrlen ai)))
+   (ai->sockaddr ai)
    (ai-canonname ai)))
+(define (ai->sockaddr ai)
+  (and-let* ((addr (ai-addr ai)))
+    (sa->sockaddr addr (ai-addrlen ai))))
+
 (define (ai-list->addrinfo ai)        ;; note that #f -> '()
   (let loop ((ai ai)
              (L '()))
@@ -263,9 +272,9 @@
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
 
-;; FIXME: we can probably get rid of the keys here, and require all args
 ;; FIXME: hints constructor is craaaap
-(define (getaddrinfo node service family socktype protocol flags) ;; must call freeaddrinfo on result
+;; Returns a c-pointer; must call freeaddrinfo on result once used.
+(define (getaddrinfo/ai node service family socktype protocol flags)
   (let-location ((res c-pointer))
     (let ((hints #f))
       (define hints (alloc-null-ai))
@@ -282,28 +291,26 @@
               (else
                (when res (freeaddrinfo res))   ;; correct??
                (error 'getaddrinfo (gai_strerror rc) node)))))))
+(define (getaddrinfo node service family socktype protocol flags)
+  (let* ((ai (getaddrinfo/ai node service family socktype protocol flags))
+         (addrinfo (ai-list->addrinfo ai)))
+    (when ai (freeaddrinfo ai))
+    addrinfo))
 
-
-;; FIXME: getaddrinfo should return the addrinfo list in scheme itself.  But keeping
-;; raw ai struct is useful if you only want one value, as in name-information
-;; FIXME: service should accept numbers
 (define (address-information node #!key service family socktype protocol flags)
   (let ((service (if (integer? service) (number->string service) service)))
-    (let* ((ai (getaddrinfo node service family socktype protocol flags))
-           (addrinfo (ai-list->addrinfo ai)))
-      (when ai (freeaddrinfo ai)) 
-      addrinfo)))
+    (getaddrinfo node service family socktype protocol flags)))
 
 ;; Constructor for socket address object from IP address string & SERVICE number.
 ;; The usual way to create such an address is via address-information; this is
-;; a slightly more efficient shortcut.
+;; a more efficient shortcut.
 ;; FIXME: The name is suspect.
 (define (inet-sockaddr ip #!optional service)   ;; Not sure if optional service makes sense.
   (let ((service (and service (number->string service))))
-    (and-let* ((ai (getaddrinfo ip service #f #f #f AI_NUMERICHOST))  ;; + AI_NUMERICSERV
-               (adi (ai->addrinfo ai)))
+    (and-let* ((ai (getaddrinfo/ai ip service #f #f #f AI_NUMERICHOST))  ;; + AI_NUMERICSERV
+               (saddr (ai->sockaddr ai)))
       (freeaddrinfo ai)
-      (addrinfo-address adi))))
+      saddr)))
 
 ;; ADDR is either a SOCKADDR object, or an IPv4 or IPv6 string.
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
@@ -314,8 +321,8 @@
    ((sockaddr? addr)
     (getnameinfo addr flags))   ; service ignored
    (else
-    (let ((saddr (inet-sockaddr addr service)))
-      (let* ((ni (getnameinfo saddr flags)))
+    (let ((port (if (integer? service) service (string->number service))))
+      (let* ((ni (getnameinfo (inet-sockaddr addr port) flags)))
         (cond ((string->number (cdr ni))
                => (lambda (p) (cons (car ni) p)))
               (else ni)))))))
