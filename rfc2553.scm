@@ -236,16 +236,26 @@
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
 ;; Note: Should add AI_NUMERICSERV to getaddrinfo call, but it may not be portable.
 ;; Note: Perhaps service should be mandatory.
+;; Note: (car (name-information addr flags: ni/numerichost)) ==
+;;         (sockaddr-address (inet-sockaddr addr)), so there is some redundancy.
 (define (name-information addr #!key (service #f) (flags 0))
+  (define (massage ni)
+    (cond ((string->number (cdr ni))
+           => (lambda (p) (cons (car ni) p)))
+          (else ni)))
   (cond
    ((sockaddr? addr)
-    (getnameinfo addr flags))   ; service ignored
+    (massage (getnameinfo addr flags)))         ; service ignored
    (else
-    (let ((port (if (integer? service) service (string->number service))))
-      (let* ((ni (getnameinfo (inet-sockaddr addr port) flags)))
-        (cond ((string->number (cdr ni))
-               => (lambda (p) (cons (car ni) p)))
-              (else ni)))))))
+    (let ((port (cond ((not service) #f)
+                      ((integer? service) service)
+                      ((string->number service))
+                      (else (error 'name-information "service must be a numeric value or #f"
+                                   service)))))
+      (let ((saddr (inet-sockaddr addr port)))
+        (unless saddr
+          (error 'name-information "invalid internet address" addr port))
+        (massage (getnameinfo saddr flags)))))))
 
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
