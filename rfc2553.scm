@@ -265,7 +265,7 @@
 
 ;; FIXME: we can probably get rid of the keys here, and require all args
 ;; FIXME: hints constructor is craaaap
-(define (getaddrinfo node #!key family socktype protocol flags service) ;; must call freeaddrinfo on result
+(define (getaddrinfo node service family socktype protocol flags) ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((hints #f))
       (define hints (alloc-null-ai))
@@ -287,11 +287,12 @@
 ;; FIXME: getaddrinfo should return the addrinfo list in scheme itself.  But keeping
 ;; raw ai struct is useful if you only want one value, as in name-information
 ;; FIXME: service should accept numbers
-(define (address-information node . keys)
-  (let* ((ai (apply getaddrinfo node keys))
-         (addrinfo (ai-list->addrinfo ai)))
-    (when ai (freeaddrinfo ai)) 
-    addrinfo))
+(define (address-information node #!key service family socktype protocol flags)
+  (let ((service (if (integer? service) (number->string service) service)))
+    (let* ((ai (getaddrinfo node service family socktype protocol flags))
+           (addrinfo (ai-list->addrinfo ai)))
+      (when ai (freeaddrinfo ai)) 
+      addrinfo)))
 
 ;; ADDR is either a SOCKADDR object, or an IPv4 or IPv6 string.
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
@@ -302,7 +303,7 @@
     (getnameinfo addr flags))
    (else
     (let ((service (if (integer? service) (number->string service) service)))
-      (and-let* ((ai (getaddrinfo addr service: service flags: AI_NUMERICHOST))
+      (and-let* ((ai (getaddrinfo addr service #f #f #f AI_NUMERICHOST))
                  (adi (ai->addrinfo ai)))
         (freeaddrinfo ai)    
         (let* ((ni (getnameinfo (addrinfo-address adi) flags)))
