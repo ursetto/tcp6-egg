@@ -1,6 +1,7 @@
+;; UNIX sockets not supported because they do not exist on Windows (though we could test for this)
+
 (use foreigners)
 (use srfi-4)
-(use hostinfo) ;; temporary -- for ip->string
 
 (foreign-declare "
 #include <sys/socket.h>
@@ -11,9 +12,11 @@
   (address-family->integer integer->address-family)
   ((af/unspec AF_UNSPEC) AF_UNSPEC)
   ((af/inet AF_INET) AF_INET)
-  ((af/inet6 AF_INET6) AF_INET6))
+  ((af/inet6 AF_INET6) AF_INET6)
+  ((af/unix AF_LOCAL) AF_LOCAL))
 (define af/inet AF_INET)
 (define af/inet6 AF_INET6)
+(define af/local AF_LOCAL)
 
 (define-foreign-enum-type (socket-type int)
   (socket-type->integer integer->socket-type)
@@ -41,7 +44,9 @@
 (define-foreign-variable ni/maxserv int "NI_MAXSERV")
 
 (define-foreign-variable NI_NUMERICHOST int "NI_NUMERICHOST")
+(define-foreign-variable NI_NUMERICSERV int "NI_NUMERICSERV")
 (define ni/numerichost NI_NUMERICHOST)
+(define ni/numericserv NI_NUMERICSERV)
 
 (define-foreign-record-type (sa "struct sockaddr")
   (int sa_family sa-family))
@@ -60,18 +65,67 @@
 ;;   (sa-family)
 ;;   )
 
-;; ugly inet_ntop (only ugly because of the locative and MV return; getnameinfo is correct)
-(define (sockaddr-address A)
-  (let ((b (sockaddr-blob A)))
-    (getnameinfo (make-locative b)
-                 (blob-size b)
-                 ni/numerichost)))
 (define (sockaddr-len A)
   (blob-size (sockaddr-blob A)))
+;; (define (sockaddr-path A)
+;;   ((foreign-lambda* c-string ((scheme-pointer sa))
+;;      "switch (((struct sockaddr*)sa)->sa_family) {"
+;;      "case AF_LOCAL: C_return(((struct sockaddr_un*)sa)->sun_path);"
+;;      "default: C_return(NULL); }"
+;;      )
+;;    (sockaddr-blob A)))
+(define (sockaddr-path A)
+  (error 'sockaddr-path "UNIX sockets are not supported"))
+
+;;(define (sockaddr-port A))
+(define (sockaddr-address A)
+  (let ((af (sockaddr-family A)))
+    (cond ((or (= af AF_INET)
+               (= af AF_INET6))
+           (vector-ref (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV)) 0))
+          ((= af AF_LOCAL)
+           (sockaddr-path A))
+          (else #f))))
+(define (sockaddr-port A)
+  ((foreign-lambda* scheme-object ((scheme-pointer sa))
+     "switch (((struct sockaddr*)sa)->sa_family) {"
+     "case AF_INET: C_return(C_fix(ntohs(((struct sockaddr_in*)sa)->sin_port)));"
+     "case AF_INET6: C_return(C_fix(ntohs(((struct sockaddr_in6*)sa)->sin6_port)));"
+     "default: C_return(C_SCHEME_FALSE); }")
+   (sockaddr-blob A)))
 
 (define-record-printer (sockaddr A out)
-  (fprintf out "#<sockaddr ~A>"
-           (integer->address-family (sockaddr-family A))))
+  (fprintf out "#<sockaddr ~S>"
+           (sockaddr->string A)
+           ;; (integer->address-family (sockaddr-family A))
+           ))
+
+;; Convert socket address/path to a compact string, mainly for display purposes.
+(define (sockaddr->string A)
+  (let ((af (sockaddr-family A)))
+    (cond ((or (= af AF_INET)
+               (= af AF_INET6))
+           (let* ((ni (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV)))
+                  (h (vector-ref ni 0))
+                  (p (vector-ref ni 1)))
+             (if (string=? p "0")
+                 h
+                 (if (= af AF_INET6)
+                     (string-append "[" h "]" ":" p)
+                     (string-append h ":" p)))))
+          ((= af AF_LOCAL)
+           (sockaddr-path A))  ;; or reach directly into blob here
+          (else
+           #f))))
+
+;; Intent of this is a direct call to getnameinfo ala inet_ntop; however
+;; error handling is annoying.
+;; (define (sockaddr->ip-string A)
+;;   (foreign-lambda* c-string ((scheme-pointer sa))
+;;     ""
+;;     )
+  
+;;   )
 
 ;; FIXME!! Port and flowinfo require network->host endian translation.
 (define-foreign-record-type (sin "struct sockaddr_in")
@@ -142,7 +196,7 @@
            ;;         ((eqv? F af/inet)
            ;;          (ip->string (inet-address (sin-addr (addrinfo-address a)))))
            ;;         (else '?)))
-           (addrinfo-address a)
+           (sockaddr->string (addrinfo-address a))
            (integer->address-family (addrinfo-family a))
            (integer->socket-type (addrinfo-socktype a))
            (integer->protocol-type (addrinfo-protocol a))
@@ -209,7 +263,8 @@
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
 
-;; I dunno, maybe getaddrinfo should take a bare addrinfo hints struct
+;; FIXME: we can probably get rid of the keys here, and require all args
+;; FIXME: hints constructor is craaaap
 (define (getaddrinfo node #!key family socktype protocol flags service) ;; must call freeaddrinfo on result
   (let-location ((res c-pointer))
     (let ((hints #f))
@@ -228,11 +283,25 @@
                (when res (freeaddrinfo res))   ;; correct??
                (error 'getaddrinfo (gai_strerror rc) node)))))))
 
+
+;; FIXME: getaddrinfo should return the addrinfo list in scheme itself.  But keeping
+;; raw ai struct is useful if you only want one value, as in name-information
 (define (address-information node . keys)
   (let* ((ai (apply getaddrinfo node keys))
          (addrinfo (ai-list->addrinfo ai)))
     (when ai (freeaddrinfo ai)) 
     addrinfo))
+;; FIXME: May want to convert returned port to number if numeric
+;; FIXME: Will return 2 values on success or 1 value (#f) on failure!
+(define (name-information addr #!key (service #f) (flags 0))
+  (let ((service (if (integer? service) (number->string service) service)))
+    (and-let* ((ai (getaddrinfo addr service: service flags: AI_NUMERICHOST))
+               (adi (ai->addrinfo ai)))
+      (freeaddrinfo ai)    
+      (let* ((ni (getnameinfo (addrinfo-address adi) flags)))
+        (cond ((string->number (vector-ref ni 1))
+               => (lambda (p) (vector (vector-ref ni 0) p)))
+              (else ni))))))
 
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
@@ -243,7 +312,7 @@
                               node (string-length node)
                               serv (string-length serv) flags)))
         (cond ((= rc 0)
-               (values (substring node 0 (string-index node #\nul))
+               (vector (substring node 0 (string-index node #\nul))
                        (substring serv 0 (string-index serv #\nul))))
               (else
                (error 'getnameinfo (gai_strerror rc))))))))
