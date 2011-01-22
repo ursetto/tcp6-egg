@@ -448,12 +448,12 @@ EOF
 			  (if (fx< bufindex buflen)
 			      (loop str limit)
 			      #!eof) ) ) ) )
-	       (lambda (p)		; read-buffered
-		 (if (fx>= bufindex buflen)
-		     ""
-		     (let ((str (##sys#substring buf bufpos buflen)))
-		       (set! bufpos buflen)
-		       str)))
+	       ;; (lambda (p)		; read-buffered
+	       ;;   (if (fx>= bufindex buflen)
+	       ;;       ""
+	       ;;       (let ((str (##sys#substring buf bufpos buflen)))
+	       ;;         (set! bufpos buflen)
+	       ;;         str)))
 	       ) )
 	     (output
 	      (lambda (s)
