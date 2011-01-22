@@ -2,7 +2,8 @@
 ;; ##net#bind-socket needs changes
 ;; tcp-connect should try all addresses
 ;; can enhance tcp-listen to accept service string
-;; tcp-listen must accept ipv6 bind only option for unspecified address
+
+;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
 
 ;;;; tcp.scm - Networking stuff
 ;
@@ -268,7 +269,9 @@ EOF
       (##sys#signal-hook 
        #:network-error 'tcp-listen 
        "getting listener host IP failed - " host port))
-    (let* ((ai (car ai))          ;; FIXME: currently choose first returned address only
+    (let* ((ai (car ai))          ;; FIXME: currently choose first returned address only;
+	                          ;; there should only be one unless host is unspecified,
+	                          ;; in which case there will be one for ipv4 & one for ipv6
 	   (addr (addrinfo-address ai)))
 
     (let ((s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
@@ -284,6 +287,19 @@ EOF
        (##sys#signal-hook 
 	#:network-error 'tcp-listen
 	(##sys#string-append "error while setting up socket - " strerror) s) )
+     (when (= (addrinfo-family ai) af/inet6)
+       (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag))
+			"#ifdef IPV6_V6ONLY\n"
+			"C_return(setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&flag, sizeof(flag)));\n"
+			"#else\n"
+			"C_return(0);\n" ;; silently fail
+			"#endif\n")
+		      s (tcp-bind-ipv6-only)))
+       
+	 (##sys#update-errno)
+	 (##sys#signal-hook 
+	  #:network-error 'tcp-listen
+	  (##sys#string-append "error while setting up socket - " strerror) s)))
     
      (let ((b (##net#bind s (sockaddr-blob addr) (sockaddr-len addr))))
        (when (eq? -1 b)
@@ -329,6 +345,7 @@ EOF
 (define tcp-write-timeout)
 (define tcp-connect-timeout)
 (define tcp-accept-timeout)
+(define tcp-bind-ipv6-only (make-parameter #f))
 
 (let ()
   (define ((check loc) x)
