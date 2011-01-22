@@ -1,3 +1,6 @@
+;; ##net#parse-host must be rewritten
+;; ##net#bind-socket needs changes
+
 ;;;; tcp.scm - Networking stuff
 ;
 ; Copyright (c) 2008-2011, The Chicken Team
@@ -252,37 +255,39 @@ EOF
     "addr->sin_port = htons(port);"
     "addr->sin_addr.s_addr = htonl(INADDR_ANY);") )
 
-(define (##net#bind-socket port style host)
+(define (##net#bind-socket port socktype host)
   (##sys#check-exact port)
   (when (or (fx< port 0) (fx>= port 65535))
     (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
-  (let ((s (##net#socket _af_inet style 0)))
-    (when (eq? _invalid_socket s)
-      (##sys#update-errno)
-      (##sys#error "cannot create socket") )
+  (let ((addr (make-string _sockaddr_in_size)))
+    (if host
+	(unless (##net#gethostaddr addr host port)
+	  (##sys#signal-hook 
+	   #:network-error 'tcp-listen 
+	   "getting listener host IP failed - " host port) )
+	(##net#fresh-addr addr port) )
+
+    (let ((s (##net#socket _af_inet socktype 0)))
+     (when (eq? _invalid_socket s)
+       (##sys#update-errno)
+       (##sys#error "cannot create socket") )
     ;; PLT makes this an optional arg to tcp-listen. Should we as well?
-    (when (eq? -1 ((foreign-lambda* int ((int socket)) 
-		     "int yes = 1; 
+     (when (eq? -1 ((foreign-lambda* int ((int socket)) 
+		      "int yes = 1; 
                       C_return(setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(int)));") 
-		   s) )
-      (##sys#update-errno)
-      (##sys#signal-hook 
-       #:network-error 'tcp-listen
-       (##sys#string-append "error while setting up socket - " strerror) s) )
-    (let ((addr (make-string _sockaddr_in_size)))
-      (if host
-	  (unless (##net#gethostaddr addr host port)
-	    (##sys#signal-hook 
-	     #:network-error 'tcp-listen 
-	     "getting listener host IP failed - " host port) )
-	  (##net#fresh-addr addr port) )
-      (let ((b (##net#bind s addr _sockaddr_in_size)))
-	(when (eq? -1 b)
-	  (##sys#update-errno)
-	  (##sys#signal-hook
-	   #:network-error 'tcp-listen
-	   (##sys#string-append "cannot bind to socket - " strerror) s port) )
-	(values s addr) ) ) ) )
+		    s) )
+       (##sys#update-errno)
+       (##sys#signal-hook 
+	#:network-error 'tcp-listen
+	(##sys#string-append "error while setting up socket - " strerror) s) )
+    
+     (let ((b (##net#bind s addr _sockaddr_in_size)))
+       (when (eq? -1 b)
+	 (##sys#update-errno)
+	 (##sys#signal-hook
+	  #:network-error 'tcp-listen
+	  (##sys#string-append "cannot bind to socket - " strerror) s port) )
+       (values s addr) )) )  )
 
 (define-constant default-backlog 10)
 
