@@ -225,7 +225,7 @@
 ;; The usual way to create such an address is via address-information; this is
 ;; a more efficient shortcut.
 ;; FIXME: The name is suspect.
-(define (inet-sockaddr ip #!optional service)   ;; Not sure if optional service makes sense.
+(define (inet-address ip #!optional service)   ;; Not sure if optional service makes sense.
   (let ((service (and service (number->string service))))
     (and-let* ((ai (getaddrinfo/ai ip service #f #f #f AI_NUMERICHOST))  ;; + AI_NUMERICSERV
                (saddr (ai->sockaddr ai)))
@@ -252,7 +252,7 @@
                       ((string->number service))
                       (else (error 'name-information "service must be a numeric value or #f"
                                    service)))))
-      (let ((saddr (inet-sockaddr addr port)))
+      (let ((saddr (inet-address addr port)))
         (unless saddr
           (error 'name-information "invalid internet address" addr port))
         (massage (getnameinfo saddr flags)))))))
