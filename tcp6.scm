@@ -25,12 +25,13 @@
 ; POSSIBILITY OF SUCH DAMAGE.
 
 
-(declare
-  (unit tcp)
-  (uses extras scheduler)
-  (export tcp-close tcp-listen tcp-connect tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
-	  tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size
-	  tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout)
+;(declare
+ 
+  (use extras ;; scheduler
+       )
+  ;; (export tcp-close tcp-listen tcp-connect tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
+  ;;         tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size
+  ;;         tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout)
   (foreign-declare #<<EOF
 #include <errno.h>
 #ifdef _WIN32
@@ -77,11 +78,11 @@ static WSADATA wsa;
 
 static char addr_buffer[ 20 ];
 EOF
-) )
+) 
 
-(include "common-declarations.scm")
+;;(include "common-declarations.scm")
 
-(register-feature! 'tcp)
+;; (register-feature! 'tcp)
 
 (define-foreign-variable errno int "errno")
 (define-foreign-variable strerror c-string "strerror(errno)")
