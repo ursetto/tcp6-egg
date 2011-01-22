@@ -1,5 +1,8 @@
 ;; ##net#parse-host must be rewritten
 ;; ##net#bind-socket needs changes
+;; tcp-connect should try all addresses
+;; can enhance tcp-listen to accept service string
+;; tcp-listen must accept ipv6 bind only option for unspecified address
 
 ;;;; tcp.scm - Networking stuff
 ;
@@ -259,15 +262,16 @@ EOF
   (##sys#check-exact port)
   (when (or (fx< port 0) (fx>= port 65535))
     (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
-  (let ((addr (make-string _sockaddr_in_size)))
-    (if host
-	(unless (##net#gethostaddr addr host port)
-	  (##sys#signal-hook 
-	   #:network-error 'tcp-listen 
-	   "getting listener host IP failed - " host port) )
-	(##net#fresh-addr addr port) )
+  (let ((ai (address-information host service: port
+				 socktype: socktype flags: ai/passive)))
+    (when (null? ai)
+      (##sys#signal-hook 
+       #:network-error 'tcp-listen 
+       "getting listener host IP failed - " host port))
+    (let* ((ai (car ai))          ;; FIXME: currently choose first returned address only
+	   (addr (addrinfo-address ai)))
 
-    (let ((s (##net#socket _af_inet socktype 0)))
+    (let ((s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
      (when (eq? _invalid_socket s)
        (##sys#update-errno)
        (##sys#error "cannot create socket") )
@@ -281,13 +285,14 @@ EOF
 	#:network-error 'tcp-listen
 	(##sys#string-append "error while setting up socket - " strerror) s) )
     
-     (let ((b (##net#bind s addr _sockaddr_in_size)))
+     (let ((b (##net#bind s (sockaddr-blob addr) (sockaddr-len addr))))
        (when (eq? -1 b)
 	 (##sys#update-errno)
 	 (##sys#signal-hook
 	  #:network-error 'tcp-listen
 	  (##sys#string-append "cannot bind to socket - " strerror) s port) )
-       (values s addr) )) )  )
+       (values s addr)   ;; addr unused by caller
+       ))   )))
 
 (define-constant default-backlog 10)
 
@@ -582,7 +587,7 @@ EOF
       (set!-values (host port) (##net#parse-host host "tcp"))
       (unless port (##sys#signal-hook #:network-error 'tcp-connect "no port specified" host)) )
     (##sys#check-exact port)
-    (let ((ai (address-information host service: port protocol: ipproto/tcp)))
+    (let ((ai (address-information host service: port protocol: ipproto/tcp))) ;; or sock/stream?
       (when (null? ai)
 	(##sys#signal-hook #:network-error 'tcp-connect "cannot find host address" host))
       (let* ((ai (car ai))
