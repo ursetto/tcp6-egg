@@ -126,7 +126,7 @@ EOF
   (foreign-lambda* c-string ((int s))
     "struct sockaddr_storage ss;"
     "char ip[NI_MAXHOST];"
-    "int len = sizeof(struct sockaddr_storage);"
+    "int len = sizeof(ss);"
     "if(getsockname(s, (struct sockaddr *)&ss, (socklen_t *)&len) != 0) C_return(NULL);"
     "if(getnameinfo((struct sockaddr *)&ss, len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST)) C_return(NULL);"
     "C_return(ip);"))
@@ -134,7 +134,7 @@ EOF
 (define ##net#getsockport
   (foreign-lambda* int ((int s))
     "struct sockaddr_storage ss;"
-    "int len = sizeof(struct sockaddr_storage);"
+    "int len = sizeof(ss);"
     "if(getsockname(s, (struct sockaddr *)&ss, (socklen_t *)(&len)) != 0) C_return(-1);"
     "switch (((struct sockaddr*)&ss)->sa_family) {"
     "case AF_INET: C_return(ntohs(((struct sockaddr_in*)&ss)->sin_port));"
@@ -143,20 +143,22 @@ EOF
 
 (define ##net#getpeerport
  (foreign-lambda* int ((int s))
-   "struct sockaddr_in sa;"
-   "int len = sizeof(struct sockaddr_in);"
-   "if(getpeername(s, (struct sockaddr *)&sa, (socklen_t *)(&len)) != 0) C_return(-1);"
-   "else C_return(ntohs(sa.sin_port));") )
+   "struct sockaddr_storage ss;"
+   "int len = sizeof(ss);"
+   "if(getpeername(s, (struct sockaddr *)&ss, (socklen_t *)(&len)) != 0) C_return(-1);"
+    "switch (((struct sockaddr*)&ss)->sa_family) {"
+    "case AF_INET: C_return(ntohs(((struct sockaddr_in*)&ss)->sin_port));"
+    "case AF_INET6: C_return(ntohs(((struct sockaddr_in6*)&ss)->sin6_port));"
+    "default: C_return(-1); }"))
 
 (define ##net#getpeername 
   (foreign-lambda* c-string ((int s))
-    "struct sockaddr_in sa;"
-    "unsigned char *ptr;"
-    "unsigned int len = sizeof(struct sockaddr_in);"
-    "if(getpeername(s, (struct sockaddr *)&sa, ((unsigned int *)&len)) != 0) C_return(NULL);"
-    "ptr = (unsigned char *)&sa.sin_addr;"
-    "sprintf(addr_buffer, \"%d.%d.%d.%d\", ptr[ 0 ], ptr[ 1 ], ptr[ 2 ], ptr[ 3 ]);"
-    "C_return(addr_buffer);") )
+    "struct sockaddr_storage ss;"
+    "char ip[NI_MAXHOST];"
+    "int len = sizeof(ss);"
+    "if(getpeername(s, (struct sockaddr *)&ss, ((socklen_t *)&len)) != 0) C_return(NULL);"
+    "if(getnameinfo((struct sockaddr *)&ss, len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST)) C_return(NULL);"
+    "C_return(ip);") )
 
 (define ##net#startup
   (foreign-lambda* bool () #<<EOF
