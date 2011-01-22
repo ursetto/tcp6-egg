@@ -573,8 +573,12 @@ EOF
       (set!-values (host port) (##net#parse-host host "tcp"))
       (unless port (##sys#signal-hook #:network-error 'tcp-connect "no port specified" host)) )
     (##sys#check-exact port)
-    (let ((addr (make-string _sockaddr_in_size))
-	  (s (##net#socket _af_inet _sock_stream 0)) )
+    (let ((ai (address-information host service: port protocol: ipproto/tcp)))
+      (when (null? ai)
+	(##sys#signal-hook #:network-error 'tcp-connect "cannot find host address" host))
+      (let* ((ai (car ai))
+	     (addr (addrinfo-address ai))
+	     (s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)) )
       (define (fail)
 	(##net#close s)
 	(##sys#update-errno)
@@ -586,12 +590,10 @@ EOF
 	(##sys#signal-hook 
 	 #:network-error 'tcp-connect
 	 (##sys#string-append "cannot create socket - " strerror) host port) )
-      (unless (##net#gethostaddr addr host port)
-	(##sys#signal-hook #:network-error 'tcp-connect "cannot find host address" host) )
       (unless (##net#make-nonblocking s)
 	(##sys#update-errno)
 	(##sys#signal-hook #:network-error 'tcp-connect (##sys#string-append "fcntl() failed - " strerror)) )
-      (when (eq? -1 (##net#connect s addr _sockaddr_in_size))
+      (when (eq? -1 (##net#connect s (sockaddr-blob addr) (sockaddr-len addr)))
 	(if (eq? errno _einprogress)
 	    (let loop ()
 	      (let ((f (##net#select-write s)))
@@ -621,7 +623,7 @@ EOF
 	       (##sys#signal-hook 
 		#:network-error 'tcp-connect
 		(##sys#string-append "cannot create socket - " (general-strerror err))))))
-      (##net#io-ports s) ) ) )
+      (##net#io-ports s) ) ) ) )
 
 (define (##sys#tcp-port->fileno p)
   (let ((data (##sys#port-data p)))
