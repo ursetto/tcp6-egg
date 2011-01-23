@@ -259,21 +259,24 @@ EOF
     "addr->sin_port = htons(port);"
     "addr->sin_addr.s_addr = htonl(INADDR_ANY);") )
 
+;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
+;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
+;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
+
 (define (##net#bind-socket port socktype host)
   (##sys#check-exact port)
   (when (or (fx< port 0) (fx>= port 65535))
     (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
-  (let ((ai (address-information host service: port
+  (let* ((family (if (and (not host) (tcp-bind-ipv6-only))
+		     af/inet #f))
+	 (ai (address-information host service: port family: family
 				 socktype: socktype flags: ai/passive)))
     (when (null? ai)
       (##sys#signal-hook 
        #:network-error 'tcp-listen 
        "getting listener host IP failed - " host port))
-    (let* ((ai (car ai))          ;; FIXME: currently choose first returned address only;
-	                          ;; there should only be one unless host is unspecified,
-	                          ;; in which case there will be one for ipv4 & one for ipv6
+    (let* ((ai (car ai))
 	   (addr (addrinfo-address ai)))
-
     (let ((s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
      (when (eq? _invalid_socket s)
        (##sys#update-errno)
