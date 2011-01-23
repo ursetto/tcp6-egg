@@ -580,6 +580,7 @@ EOF
 
 (define general-strerror (foreign-lambda c-string "strerror" int))
 
+;; FIXME: allow port string (auto-service lookup) and fix host parsing
 (define (tcp-connect host . more)
   (let ((port (optional more #f))
 	(tmc (tcp-connect-timeout)))
@@ -587,7 +588,7 @@ EOF
     (unless port
       (set!-values (host port) (##net#parse-host host "tcp"))
       (unless port (##sys#signal-hook #:network-error 'tcp-connect "no port specified" host)) )
-    (##sys#check-exact port)
+
     (let ((ai (address-information host service: port protocol: ipproto/tcp))) ;; or sock/stream?
       (when (null? ai)
 	(##sys#signal-hook #:network-error 'tcp-connect "cannot find host address" host))
