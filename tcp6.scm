@@ -1,9 +1,9 @@
 ;; ##net#parse-host must be rewritten
-;; ##net#bind-socket needs changes
 ;; tcp-connect should try all addresses
-;; can enhance tcp-listen to accept service string
 
 ;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
+;; tcp-listen accepts service name string
+;; tcp-connect accepts service name string (may issue SRV request)
 
 ;;;; tcp.scm - Networking stuff
 ;
@@ -245,9 +245,9 @@ EOF
 ;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
 
 (define (##net#bind-socket port socktype host)
-  (##sys#check-exact port)
-  (when (or (fx< port 0) (fx>= port 65535))
-    (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
+  ;; (##sys#check-exact port)
+  ;; (when (or (fx< port 0) (fx>= port 65535))
+  ;;   (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
   (let* ((family (if (and (not host) (tcp-bind-ipv6-only))
 		     af/inet #f))
 	 (ai (address-information host service: port family: family
@@ -255,7 +255,7 @@ EOF
     (when (null? ai)
       (##sys#signal-hook 
        #:network-error 'tcp-listen 
-       "getting listener host IP failed - " host port))
+       "node or service lookup failed" host port))
     (let* ((ai (car ai))
 	   (addr (addrinfo-address ai)))
     (let ((s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
