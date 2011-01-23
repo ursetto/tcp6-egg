@@ -218,27 +218,37 @@ EOF
        (##sys#setslot ct 1 (lambda () (return (##core#undefined))))
        (##sys#schedule) ) ) ) )
 
-(define ##net#parse-host
-  (let ((substring substring))
-    (lambda (host proto)
-      (let ((len (##sys#size host)))
-	(let loop ((i 0))
-	  (if (fx>= i len)
-	      (values host #f)
-	      (let ((c (##core#inline "C_subchar" host i)))
-		(if (char=? c #\:)		    
-		    (values
-		     (substring host (fx+ i 1) len)
-		     (let* ((s (substring host 0 i))
-			    (p (##net#getservbyname s proto)) )
-		       (when (eq? 0 p)
-			 (##sys#update-errno)
-			 (##sys#signal-hook
-			  #:network-error 'tcp-connect
-			  (##sys#string-append "cannot compute port from service - " strerror)
-			  s) )
-		       p) )
-		    (loop (fx+ i 1)) ) ) ) ) ) ) ) )
+;; Note: if unparsable into host/port, return full string as hostname, and let caller deal with it.
+;; If host or port is empty, returns #f for that field.
+(define (parse-host-address str)
+  (let ((len (string-length str)))
+    (if (= len 0)
+	(values "" #f)
+	(if (char=? (string-ref str 0) #\[)
+	    (let ((j (string-index str #\] 1)))
+	      (if j
+		  (let* ((host (substring str 1 j))
+			 (host (if (string=? host "") #f host)))
+		    (if (= (fx+ j 1) len)
+			(values host #f)      ;; bracketed address w/o port
+			(if (char=? (string-ref str (fx+ j 1)) #\:)
+			    (let* ((port (substring str (fx+ j 2)))
+				   (port (if (string=? port "") #f port)))
+			      (values host port)) ;; bracketed address w/ port
+			    (values str #f))))
+		  (values str #f)))
+	    (let ((j (string-index str #\:)))
+	      (if j
+		  (let ((k (string-index str #\: (fx+ j 1))))
+		    (if k
+			(values str #f)   ;; a bare IPv6 address
+			(let* ((host (substring str 0 j))
+			       (host (if (string=? host "") #f host))
+			       (port (substring str (fx+ j 1)))
+			       (port (if (string=? port "") #f port)))
+			  (values host port)))) ;; IPv4 address w/port
+		  (values str #f)) ;; an IPv4 address sans port
+	      )))))
 
 ;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
@@ -586,12 +596,12 @@ EOF
 	(tmc (tcp-connect-timeout)))
     (##sys#check-string host)
     (unless port
-      (set!-values (host port) (##net#parse-host host "tcp"))
+      (set!-values (host port) (parse-host-address host))
       (unless port (##sys#signal-hook #:network-error 'tcp-connect "no port specified" host)) )
 
     (let ((ai (address-information host service: port protocol: ipproto/tcp))) ;; or sock/stream?
       (when (null? ai)
-	(##sys#signal-hook #:network-error 'tcp-connect "cannot find host address" host))
+	(##sys#signal-hook #:network-error 'tcp-connect "node and/or service lookup failed" host port))
       (let* ((ai (car ai))
 	     (addr (addrinfo-address ai))
 	     (s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)) )
