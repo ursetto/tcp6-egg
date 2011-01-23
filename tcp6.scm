@@ -211,17 +211,6 @@ EOF
      if(rv > 0) { rv = FD_ISSET(fd, &out) ? 1 : 0; }
      C_return(rv);") )
 
-(define ##net#gethostaddr
-  (foreign-lambda* bool ((scheme-pointer saddr) (c-string host) (unsigned-short port))
-    "struct hostent *he = gethostbyname(host);"
-    "struct sockaddr_in *addr = (struct sockaddr_in *)saddr;"
-    "if(he == NULL) C_return(0);"
-    "memset(addr, 0, sizeof(struct sockaddr_in));"
-    "addr->sin_family = AF_INET;"
-    "addr->sin_port = htons((short)port);"
-    "addr->sin_addr = *((struct in_addr *)he->h_addr);"
-    "C_return(1);") )
-
 (define (yield)
   (##sys#call-with-current-continuation
    (lambda (return)
@@ -250,14 +239,6 @@ EOF
 			  s) )
 		       p) )
 		    (loop (fx+ i 1)) ) ) ) ) ) ) ) )
-
-(define ##net#fresh-addr
-  (foreign-lambda* void ((scheme-pointer saddr) (unsigned-short port))
-    "struct sockaddr_in *addr = (struct sockaddr_in *)saddr;"
-    "memset(addr, 0, sizeof(struct sockaddr_in));"
-    "addr->sin_family = AF_INET;"
-    "addr->sin_port = htons(port);"
-    "addr->sin_addr.s_addr = htonl(INADDR_ANY);") )
 
 ;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
