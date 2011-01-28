@@ -8,6 +8,49 @@
 #include <netdb.h>
 ")
 
+
+(foreign-declare "
+#include <errno.h>
+#ifdef _WIN32
+# if (defined(HAVE_WINSOCK2_H) && defined(HAVE_WS2TCPIP_H))
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+# else
+#  include <winsock.h>
+# endif
+/* Beware: winsock2.h must come BEFORE windows.h */
+# define socklen_t       int
+static WSADATA wsa;
+# define fcntl(a, b, c)  0
+# define EWOULDBLOCK     0
+# define EINPROGRESS     0
+# define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\\
+    getsockopt(socket, level, optname, (char *)optval, optlen)
+#else
+# include <fcntl.h>
+# include <sys/types.h>
+# include <sys/socket.h>
+# include <sys/time.h>
+# include <netinet/in.h>
+# include <unistd.h>
+# include <netdb.h>
+# include <signal.h>
+# define closesocket     close
+# define INVALID_SOCKET  -1
+# define typecorrect_getsockopt getsockopt
+#endif
+
+#ifndef SD_RECEIVE
+# define SD_RECEIVE      0
+# define SD_SEND         1
+#endif
+
+#ifdef ECOS
+#include <sys/sockio.h>
+#endif
+
+")
+
 ;;; constants
 
 (define-foreign-enum-type (address-family int)
@@ -271,3 +314,53 @@
               (else
                (error 'getnameinfo (gai_strerror rc))))))))
 
+
+
+;;; socket operations
+
+;; Socket errors under windows probably require the use of WSAGetLastError &
+;; WSA* error codes.  Note that non-blocking reads are disabled on Windows;
+;; perhaps this could be fixed.
+(define-foreign-variable errno int "errno")
+(define-foreign-variable strerrno c-string "strerror(errno)")
+(define-foreign-variable _invalid_socket int "INVALID_SOCKET")
+(define-foreign-variable _ewouldblock int "EWOULDBLOCK")
+(define-foreign-variable _einprogress int "EINPROGRESS")
+
+(define-inline (network-error where msg . args)
+  (apply 
+   ##sys#signal-hook #:network-error where msg args))
+(define-inline (network-error/errno where msg . args)
+  (##sys#update-errno)
+  (apply ##sys#signal-hook #:network-error where
+         (string-append msg " - " strerrno)
+         args))
+(define-syntax non-nil
+  (syntax-rules ()
+    ((_ a)
+     (let ((x a))
+       (if (or (not x) (null? x)) #f x)))
+    ((_ a . rest)
+     (let ((x a))
+       (if (or (not x) (null? x))
+           (non-nil . rest)
+           x)))))
+
+(define-record socket fileno family type protocol)
+
+(define-record-printer (socket s out)
+  (fprintf out "#<socket fd ~S ~S ~S ~S>"
+           (socket-fileno s)
+           (non-nil (integer->address-family (socket-family s)) (socket-family s))
+           (non-nil (integer->socket-type (socket-type s)) (socket-type s))
+           (non-nil (integer->protocol-type (socket-protocol s)) (socket-protocol s))))
+
+(define (socket family socktype protocol)
+  (define _socket (foreign-lambda int "socket" int int int))
+  (let ((s (_socket family socktype protocol)))
+    (when (eq? _invalid_socket s)
+      (network-error/errno 'socket "cannot create socket"
+                           (non-nil (integer->address-family family) family)
+                           (non-nil (integer->socket-type socktype) socktype)
+                           (non-nil (integer->protocol-type protocol) protocol)))
+    (make-socket s family socktype protocol)))

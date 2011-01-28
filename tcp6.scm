@@ -604,18 +604,14 @@ EOF
 	(##sys#signal-hook #:network-error 'tcp-connect "node and/or service lookup failed" host port))
       (let* ((ai (car ai))
 	     (addr (addrinfo-address ai))
-	     (s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)) )
+	     (s (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
+	     (s (socket-fileno s)))
       (define (fail)
 	(##net#close s)
 	(##sys#update-errno)
 	(##sys#signal-hook 
 	 #:network-error 'tcp-connect (##sys#string-append "cannot connect to socket - " strerror) 
 	 host port) )
-      (when (eq? -1 s)
-	(##sys#update-errno)
-	(##sys#signal-hook 
-	 #:network-error 'tcp-connect
-	 (##sys#string-append "cannot create socket - " strerror) host port) )
       (unless (##net#make-nonblocking s)
 	(##sys#update-errno)
 	(##sys#signal-hook #:network-error 'tcp-connect (##sys#string-append "fcntl() failed - " strerror)) )
