@@ -343,6 +343,7 @@ static WSADATA wsa;
 (define-foreign-variable _einprogress int "EINPROGRESS")
 
 (define _close_socket (foreign-lambda int "closesocket" int))
+(define strerror (foreign-lambda c-string "strerror" int))
 
 (define select-write
   (foreign-lambda* int ((int fd))
@@ -376,6 +377,23 @@ static WSADATA wsa;
     (##sys#signal-hook
      #:network-timeout-error
      where "operation timed out" timeout fd)))
+
+(define (get-socket-error s)
+  ;; http://cr.yp.to/docs/connect.html describes alternative ways to retrieve
+  ;; non-blocking socket errors.
+  (define _getsockerr
+    (foreign-lambda* int ((int socket))
+      "int err;"
+      "int optlen = sizeof(err);"
+      "if (typecorrect_getsockopt(socket, SOL_SOCKET, SO_ERROR, &err, (socklen_t *)&optlen) == -1)"
+      "C_return(-1);"
+      "C_return(err);"))
+  (let ((err (_getsockerr s)))
+    (cond ((fx= err 0) #f)
+          ((fx> err 0) err)
+          (else
+           (_close_socket s)
+           (network-error/errno 'get-socket-error "unable to obtain socket error code")))))
 
 (define-syntax non-nil
   (syntax-rules ()
@@ -422,21 +440,11 @@ static WSADATA wsa;
               (unless (eq? f 1)
                 (block-for-timeout! 'socket-connect! timeout s #:all)
                 (loop))
-              ;; http://cr.yp.to/docs/connect.html describes alternative ways to retrieve
-              ;; non-blocking socket errors, other than getsockopt() which may not work on old systems.
-              (let ((err (get-socket-error s)))
-                (cond ((fx= err -1)
-                       (##net#close s)
-                       (##sys#signal-hook 
-                        #:network-error 'tcp-connect
-                        (##sys#string-append "getsockopt() failed - " strerror)))
-                      ((fx> err 0)
-                       (##net#close s)
-                       (##sys#signal-hook 
-                        #:network-error 'tcp-connect
-                        (##sys#string-append "cannot create socket - " (general-strerror err))))))
-              ) )
-          (fail) ) ))
-  ;; perhaps socket address should be stored in socket object
-  (void)
-  )
+              (cond ((get-socket-error s)
+                     => (lambda (err)
+                          (_close_socket s)
+                          (network-error 'tcp-connect "cannot create socket - "
+                                         (strerror err)))))))
+          (fail)))
+    ;; perhaps socket address should be stored in socket object
+    (void)))
