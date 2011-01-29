@@ -121,12 +121,6 @@ EOF
       int ((int s) (scheme-pointer msg) (int offset) (int len) (int flags))
     "C_return(send(s, (char *)msg+offset, len, flags));"))
 
-(define ##net#make-nonblocking
-  (foreign-lambda* bool ((int fd))
-    "int val = fcntl(fd, F_GETFL, 0);"
-    "if(val == -1) C_return(0);"
-    "C_return(fcntl(fd, F_SETFL, val | O_NONBLOCK) != -1);") )
-
 (define ##net#getsockname 
   (foreign-lambda* c-string ((int s))
     "struct sockaddr_storage ss;"
@@ -541,9 +535,6 @@ EOF
 	     (addr (addrinfo-address ai))
 	     (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
 	     (s (socket-fileno so)))
-      (unless (##net#make-nonblocking s)
-	(##sys#update-errno)
-	(##sys#signal-hook #:network-error 'tcp-connect (##sys#string-append "fcntl() failed - " strerror)) )
       (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
 	(socket-connect! so addr))
       (##net#io-ports s) ) ) ) )

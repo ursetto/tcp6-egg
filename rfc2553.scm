@@ -345,7 +345,25 @@ static WSADATA wsa;
 (define _close_socket (foreign-lambda int "closesocket" int))
 (define strerror (foreign-lambda c-string "strerror" int))
 
-(define select-write
+(define _make_socket_nonblocking
+  (foreign-lambda* bool ((int fd))
+    "int val = fcntl(fd, F_GETFL, 0);"
+    "if(val == -1) C_return(0);"
+    "C_return(fcntl(fd, F_SETFL, val | O_NONBLOCK) != -1);"))
+
+(define select-for-read
+  (foreign-lambda* int ((int fd))
+    "fd_set in;
+     struct timeval tm;
+     int rv;
+     FD_ZERO(&in);
+     FD_SET(fd, &in);
+     tm.tv_sec = tm.tv_usec = 0;
+     rv = select(fd + 1, &in, NULL, NULL, &tm);
+     if(rv > 0) { rv = FD_ISSET(fd, &in) ? 1 : 0; }
+     C_return(rv);") )
+
+(define select-for-write
   (foreign-lambda* int ((int fd))
     "fd_set out;
      struct timeval tm;
@@ -465,10 +483,12 @@ static WSADATA wsa;
     (network-error/errno 'socket-connect! "cannot connect to socket address" s saddr))
   (let ((s (socket-fileno so))
         (timeout (socket-connect-timeout)))
+    (unless (_make_socket_nonblocking s)
+      (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
       (if (eq? errno _einprogress)
           (let loop ()
-            (let ((f (select-write s)))
+            (let ((f (select-for-write s)))
               (when (eq? f -1) (fail))
               (unless (eq? f 1)
                 (block-for-timeout! 'socket-connect! timeout s #:all)
