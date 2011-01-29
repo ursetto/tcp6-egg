@@ -489,24 +489,11 @@ EOF
       (if (eq? 1 (##net#select fd))
 	  (let ((fd (##net#accept fd #f #f)))
 	    (when (eq? -1 fd)
-	      (##sys#update-errno)
-	      (##sys#signal-hook 
-	       #:network-error 'tcp-accept (##sys#string-append "could not accept from listener - " strerror) 
-	       tcpl) )
+	      (network-error/errno 'tcp-accept "could not accept from listener" tcpl))
 	    (##net#io-ports fd) )
 	  (begin
-	    (when tma
-	      (##sys#thread-block-for-timeout! 
-	       ##sys#current-thread
-	       (+ (current-milliseconds) tma) ) )
-	    (##sys#thread-block-for-i/o! ##sys#current-thread fd #:input)
-	    (yield)
-	    (when (##sys#slot ##sys#current-thread 13)
-	      (##sys#signal-hook
-	       #:network-timeout-error
-	       'tcp-accept
-	       "accept operation timed out" tma fd) )
-	    (loop) ) ) ) ) )
+	    (block-for-timeout! 'tcp-accept tma fd #:input)
+	    (loop))))))
 
 (define (tcp-accept-ready? tcpl)
   (##sys#check-structure tcpl 'tcp-listener 'tcp-accept-ready?)
