@@ -457,7 +457,7 @@ static WSADATA wsa;
            (non-nil . rest)
            x)))))
 
-(define-record socket fileno family type protocol)
+(define-record socket fileno family type protocol)  ;; NB socket? conflicts with Unit posix
 
 (define-record-printer (socket s out)
   (fprintf out "#<socket fd ~S ~S ~S ~S>"
@@ -507,3 +507,7 @@ static WSADATA wsa;
   (let ((l (_listen (socket-fileno so) backlog)))
     (when (eq? -1 l)
       (network-error/errno 'tcp-listen "cannot listen on socket" so))))
+(define (socket-close! so)
+  (let ((s (socket-fileno so)))
+    (when (fx= -1 (_close_socket s))
+      (network-error/errno 'socket-close! "could not close socket" so))))

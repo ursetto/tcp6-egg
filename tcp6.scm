@@ -39,7 +39,7 @@
   (use extras ;; scheduler
        )
   ;; (export tcp-close tcp-listen tcp-connect tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
-  ;;         tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size
+  ;;         tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size tcp-listener-socket
   ;;         tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout)
   (foreign-declare #<<EOF
 #include <errno.h>
@@ -243,25 +243,23 @@ EOF
 
 (define-constant default-backlog 10)
 
+(define-record-type tcp6-listener
+  (make-tcp6-listener socket)
+  tcp-listener?
+  (socket tcp-listener-socket))
+
 (define (tcp-listen port . more)
   (let-optionals more ((w default-backlog) (host #f))
     (let-values (((s addr) (##net#bind-socket port _sock_stream host)))
-      (let ((so (make-socket s #f #f #f)))          ;; FIXME: temporary until bind returns socket obj!
+      (let ((so (make-socket s 0 0 0)))          ;; FIXME: temporary until bind returns socket obj!
 	(socket-listen! so w)
-	(##sys#make-structure 'tcp-listener s)))))
+	(make-tcp6-listener so)))))
 
-(define (tcp-listener? x) 
-  (and (##core#inline "C_blockp" x)
-       (##sys#structure? x 'tcp-listener) ) )
+(define (tcp-listener-fileno tcpl)
+  (socket-fileno (tcp-listener-socket)))
 
 (define (tcp-close tcpl)
-  (##sys#check-structure tcpl 'tcp-listener)
-  (let ((s (##sys#slot tcpl 1)))
-    (when (fx= -1 (##net#close s))
-      (##sys#update-errno)
-      (##sys#signal-hook 
-       #:network-error 'tcp-close
-       (##sys#string-append "cannot close TCP socket - " strerror) tcpl) ) ) )
+  (socket-close! (tcp-listener-socket tcpl)))
 
 (define-constant +input-buffer-size+ 1024)
 (define-constant +output-chunk-size+ 8192)
@@ -436,8 +434,7 @@ EOF
 	(values in out) ) ) ) )
 
 (define (tcp-accept tcpl)
-  (##sys#check-structure tcpl 'tcp-listener)
-  (let ((fd (##sys#slot tcpl 1))
+  (let ((fd (tcp-listener-fileno tcpl))
 	(tma (tcp-accept-timeout)))
     (let loop ()
       (if (eq? 1 (select-for-read fd))
@@ -452,8 +449,7 @@ EOF
 	    (loop))))))
 
 (define (tcp-accept-ready? tcpl)
-  (##sys#check-structure tcpl 'tcp-listener 'tcp-accept-ready?)
-  (let ((f (select-for-read (##sys#slot tcpl 1))))
+  (let ((f (select-for-read (tcp-listener-fileno tcpl))))
     (when (eq? -1 f)
       (network-error/errno 'tcp-accept-ready? "cannot check socket for input" tcpl))
     (eq? 1 f) ) )
@@ -512,8 +508,7 @@ EOF
 	  (##sys#string-append "cannot compute remote port - " strerror) p) ) ) ) )
 
 (define (tcp-listener-port tcpl)
-  (##sys#check-structure tcpl 'tcp-listener 'tcp-listener-port)
-  (let* ((fd (##sys#slot tcpl 1))
+  (let* ((fd (tcp-listener-fileno tcpl))
 	 (port (##net#getsockport fd)) )
     (when (eq? -1 port)
       (##sys#signal-hook
@@ -527,7 +522,3 @@ EOF
    (##sys#port-data p)
    (if (##sys#slot p 1) 2 1)
    #t) )
-
-(define (tcp-listener-fileno l)
-  (##sys#check-structure l 'tcp-listener 'tcp-listener-fileno)
-  (##sys#slot l 1) )
