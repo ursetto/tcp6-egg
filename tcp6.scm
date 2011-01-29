@@ -4,6 +4,9 @@
 ;; tcp-listen accepts service name string
 ;; tcp-connect accepts service name string (may issue SRV request)
 
+;; creating a 'socket port (slot 7) will allow posixunix to call ##sys#tcp-port->fileno,
+;; which will bomb
+
 ;;;; tcp.scm - Networking stuff
 ;
 ; Copyright (c) 2008-2011, The Chicken Team
@@ -109,7 +112,6 @@ EOF
 
 (define ##net#socket (foreign-lambda int "socket" int int int))
 (define ##net#bind (foreign-lambda int "bind" int scheme-pointer int))
-(define ##net#listen (foreign-lambda int "listen" int int))
 (define ##net#accept (foreign-lambda int "accept" int c-pointer c-pointer))
 (define ##net#close (foreign-lambda int "closesocket" int))
 (define ##net#recv (foreign-lambda int "recv" int scheme-pointer int int))
@@ -172,12 +174,6 @@ EOF
 
 (unless (##net#startup)
   (##sys#signal-hook #:network-error "cannot initialize Winsock") )
-
-(define ##net#getservbyname 
-  (foreign-lambda* int ((c-string serv) (c-string proto))
-    "struct servent *se;
-     if((se = getservbyname(serv, proto)) == NULL) C_return(0);
-     else C_return(ntohs(se->s_port));") )     
 
 (define ##net#select
   (foreign-lambda* int ((int fd))
@@ -250,14 +246,9 @@ EOF
 (define (tcp-listen port . more)
   (let-optionals more ((w default-backlog) (host #f))
     (let-values (((s addr) (##net#bind-socket port _sock_stream host)))
-      (##sys#check-exact w)
-      (let ((l (##net#listen s w)))
-	(when (eq? -1 l)
-	  (##sys#update-errno)
-	  (##sys#signal-hook 
-	   #:network-error 'tcp-listen
-	   (##sys#string-append "cannot listen on socket - " strerror) s port) )
-	(##sys#make-structure 'tcp-listener s) ) ) ) )
+      (let ((so (make-socket s #f #f #f)))          ;; FIXME: temporary until bind returns socket obj!
+	(socket-listen! so w)
+	(##sys#make-structure 'tcp-listener s)))))
 
 (define (tcp-listener? x) 
   (and (##core#inline "C_blockp" x)

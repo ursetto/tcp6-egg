@@ -501,3 +501,9 @@ static WSADATA wsa;
           (fail)))
     ;; perhaps socket address should be stored in socket object
     (void)))
+
+(define (socket-listen! so backlog)
+  (define _listen (foreign-lambda int "listen" int int))
+  (let ((l (_listen (socket-fileno so) backlog)))
+    (when (eq? -1 l)
+      (network-error/errno 'tcp-listen "cannot listen on socket" so))))
