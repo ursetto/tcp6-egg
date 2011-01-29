@@ -385,19 +385,12 @@ static WSADATA wsa;
          args))
 
 (define (block-for-timeout! where timeout fd type)  ;; #f permitted for WHERE
-  (define (yield)
-    (##sys#call-with-current-continuation
-     (lambda (return)
-       (let ((ct ##sys#current-thread))
-         (##sys#setslot ct 1 (lambda () (return (##core#undefined))))
-         (##sys#schedule)))))
-
   (when timeout
     (##sys#thread-block-for-timeout!
      ##sys#current-thread
      (+ (current-milliseconds) timeout)))
   (##sys#thread-block-for-i/o! ##sys#current-thread fd type)
-  (yield)
+  (##sys#thread-yield!)
   (when (##sys#slot ##sys#current-thread 13)
     (##sys#signal-hook
      #:network-timeout-error
