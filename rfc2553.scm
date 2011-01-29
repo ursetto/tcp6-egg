@@ -395,6 +395,39 @@ static WSADATA wsa;
            (_close_socket s)
            (network-error/errno 'get-socket-error "unable to obtain socket error code")))))
 
+;; Silly parsing of inet address string into host and port.
+;; Note: if unparsable into host/port, return full string as hostname, and let caller deal with it.
+;; If host or port is empty, returns #f for that field.
+(define (parse-inet-address str)
+  (let ((len (string-length str)))
+    (if (= len 0)
+	(values "" #f)
+	(if (char=? (string-ref str 0) #\[)
+	    (let ((j (string-index str #\] 1)))
+	      (if j
+		  (let* ((host (substring str 1 j))
+			 (host (if (string=? host "") #f host)))
+		    (if (= (fx+ j 1) len)
+			(values host #f)      ;; bracketed address w/o port
+			(if (char=? (string-ref str (fx+ j 1)) #\:)
+			    (let* ((port (substring str (fx+ j 2)))
+				   (port (if (string=? port "") #f port)))
+			      (values host port)) ;; bracketed address w/ port
+			    (values str #f))))
+		  (values str #f)))
+	    (let ((j (string-index str #\:)))
+	      (if j
+		  (let ((k (string-index str #\: (fx+ j 1))))
+		    (if k
+			(values str #f)   ;; a bare IPv6 address
+			(let* ((host (substring str 0 j))
+			       (host (if (string=? host "") #f host))
+			       (port (substring str (fx+ j 1)))
+			       (port (if (string=? port "") #f port)))
+			  (values host port)))) ;; IPv4 address w/port
+		  (values str #f)) ;; an IPv4 address sans port
+	      )))))
+
 (define-syntax non-nil
   (syntax-rules ()
     ((_ a)
