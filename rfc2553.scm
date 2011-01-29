@@ -502,12 +502,35 @@ static WSADATA wsa;
     ;; perhaps socket address should be stored in socket object
     (void)))
 
+;; Listening on datagram socket throws an OS error.
 (define (socket-listen! so backlog)
   (define _listen (foreign-lambda int "listen" int int))
   (let ((l (_listen (socket-fileno so) backlog)))
     (when (eq? -1 l)
-      (network-error/errno 'tcp-listen "cannot listen on socket" so))))
+      (network-error/errno 'socket-listen! "cannot listen on socket" so))))
+
 (define (socket-close! so)
   (let ((s (socket-fileno so)))
     (when (fx= -1 (_close_socket s))
       (network-error/errno 'socket-close! "could not close socket" so))))
+
+;; Returns a socket object representing the accepted connection.
+;; Does not currently return the socket address of the remote, although it could;
+;; alternatively you can get it from getpeername.
+(define (socket-accept so)
+  (define _accept (foreign-lambda int "accept" int c-pointer c-pointer))
+  (let ((s (socket-fileno so))
+        (to (socket-accept-timeout)))
+    (let restart ()
+      (if (eq? 1 (select-for-read s))
+          (let ((s (_accept s #f #f)))
+            (when (eq? -1 s)
+              (network-error/errno 'socket-accept "could not accept from listener" so))
+            (unless (_make_socket_nonblocking s)
+              (network-error/errno 'socket-accept "unable to set socket to non-blocking" s))
+            ;; iffy
+            (make-socket s (socket-family so) (socket-type so) (socket-protocol so)))
+          (begin
+            (block-for-timeout! 'socket-accept to s #:input)
+            (restart))))))
+

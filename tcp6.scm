@@ -419,19 +419,9 @@ EOF
 	(values in out) ) ) ) )
 
 (define (tcp-accept tcpl)
-  (let ((fd (tcp-listener-fileno tcpl))
-	(tma (tcp-accept-timeout)))
-    (let loop ()
-      (if (eq? 1 (select-for-read fd))
-	  (let ((fd (##net#accept fd #f #f)))
-	    (when (eq? -1 fd)
-	      (network-error/errno 'tcp-accept "could not accept from listener" tcpl))
-	    (unless (_make_socket_nonblocking fd)
-	      (network-error/errno 'tcp-accept "unable to set socket to non-blocking" fd))
-	    (##net#io-ports fd) )
-	  (begin
-	    (block-for-timeout! 'tcp-accept tma fd #:input)
-	    (loop))))))
+  (parameterize ((socket-accept-timeout (tcp-accept-timeout)))
+    (let ((so (socket-accept (tcp-listener-socket tcpl))))
+      (##net#io-ports (socket-fileno so)))))
 
 (define (tcp-accept-ready? tcpl)
   (let ((f (select-for-read (tcp-listener-fileno tcpl))))
