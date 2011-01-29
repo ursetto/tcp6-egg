@@ -191,13 +191,6 @@ EOF
      if(rv > 0) { rv = FD_ISSET(fd, &in) ? 1 : 0; }
      C_return(rv);") )
 
-(define (yield)
-  (##sys#call-with-current-continuation
-   (lambda (return)
-     (let ((ct ##sys#current-thread))
-       (##sys#setslot ct 1 (lambda () (return (##core#undefined))))
-       (##sys#schedule) ) ) ) )
-
 ;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
 ;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
@@ -292,10 +285,6 @@ EOF
 (define ##net#io-ports
   (let ((tbs tcp-buffer-size))
     (lambda (fd)
-      (unless (##net#make-nonblocking fd)
-	(##sys#update-errno)
-	(##sys#signal-hook 
-	 #:network-error (##sys#string-append "cannot create TCP ports - " strerror)) )
       (let* ((buf (make-string +input-buffer-size+))
 	     (data (vector fd #f #f buf 0))
 	     (buflen 0)
@@ -311,24 +300,11 @@ EOF
 		(let loop ()
 		  (let ((n (##net#recv fd buf +input-buffer-size+ 0)))
 		    (cond ((eq? -1 n)
-			   (cond ((eq? errno _ewouldblock) 
-				  (when tmr
-				    (##sys#thread-block-for-timeout! 
-				     ##sys#current-thread
-				     (+ (current-milliseconds) tmr) ) )
-				  (##sys#thread-block-for-i/o! ##sys#current-thread fd #:input)
-				  (yield)
-				  (when (##sys#slot ##sys#current-thread 13)
-				    (##sys#signal-hook
-				     #:network-timeout-error
-				     "read operation timed out" tmr fd) )
-				  (loop) )
+			   (cond ((eq? errno _ewouldblock)
+				  (block-for-timeout! 'socket-receive! tmr fd #:input)
+				  (loop))
 				 (else
-				  (##sys#update-errno)
-				  (##sys#signal-hook 
-				   #:network-error
-				   (##sys#string-append "cannot read from socket - " strerror) 
-				   fd) ) ) )
+				  (network-error/errno 'socket-receive! "cannot read from socket" fd))))
 			  (else
 			   (set! buflen n)
 			   (##sys#setislot data 4 n)
@@ -427,23 +403,10 @@ EOF
 			 (n (##net#send fd s offset count 0)) )
 		    (cond ((eq? -1 n)
 			   (cond ((eq? errno _ewouldblock)
-				  (when tmw
-				    (##sys#thread-block-for-timeout! 
-				     ##sys#current-thread
-				     (+ (current-milliseconds) tmw) ) )
-				  (##sys#thread-block-for-i/o! ##sys#current-thread fd #:output)
-				  (yield) 
-				  (when (##sys#slot ##sys#current-thread 13)
-				    (##sys#signal-hook
-				     #:network-timeout-error
-				     "write operation timed out" tmw fd) )
-				  (loop len offset) )
+				  (block-for-timeout! 'socket-send! tmw fd #:output)
+				  (loop len offset))
 				 (else
-				  (##sys#update-errno)
-				  (##sys#signal-hook 
-				   #:network-error
-				   (##sys#string-append "cannot write to socket - " strerror) 
-				   fd) ) ) )
+				  (network-error/errno 'socket-send! "cannot write to socket" fd))))
 			  ((fx< n len)
 			   (loop (fx- len n) (fx+ offset n)) ) ) ) ) ) )
 	     (out
@@ -490,6 +453,8 @@ EOF
 	  (let ((fd (##net#accept fd #f #f)))
 	    (when (eq? -1 fd)
 	      (network-error/errno 'tcp-accept "could not accept from listener" tcpl))
+	    (unless (_make_socket_nonblocking fd)
+	      (network-error/errno 'tcp-accept "unable to set socket to non-blocking" fd))
 	    (##net#io-ports fd) )
 	  (begin
 	    (block-for-timeout! 'tcp-accept tma fd #:input)
