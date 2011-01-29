@@ -486,7 +486,7 @@ EOF
   (let ((fd (##sys#slot tcpl 1))
 	(tma (tcp-accept-timeout)))
     (let loop ()
-      (if (eq? 1 (##net#select fd))
+      (if (eq? 1 (select-for-read fd))
 	  (let ((fd (##net#accept fd #f #f)))
 	    (when (eq? -1 fd)
 	      (network-error/errno 'tcp-accept "could not accept from listener" tcpl))
@@ -497,12 +497,9 @@ EOF
 
 (define (tcp-accept-ready? tcpl)
   (##sys#check-structure tcpl 'tcp-listener 'tcp-accept-ready?)
-  (let ((f (##net#select (##sys#slot tcpl 1))))
+  (let ((f (select-for-read (##sys#slot tcpl 1))))
     (when (eq? -1 f)
-      (##sys#update-errno)
-      (##sys#signal-hook 
-       #:network-error 'tcp-accept-ready? (##sys#string-append "cannot check socket for input - " strerror) 
-       tcpl) )
+      (network-error/errno 'tcp-accept-ready? "cannot check socket for input" tcpl))
     (eq? 1 f) ) )
 
 (define-inline (network-error where msg . args)
