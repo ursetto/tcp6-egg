@@ -107,7 +107,6 @@ EOF
 (define-foreign-variable _ipproto_tcp int "IPPROTO_TCP")
 (define-foreign-variable _invalid_socket int "INVALID_SOCKET")
 (define-foreign-variable _ewouldblock int "EWOULDBLOCK")
-(define-foreign-variable _einprogress int "EINPROGRESS")
 
 (define ##net#socket (foreign-lambda int "socket" int int int))
 (define ##net#bind (foreign-lambda int "bind" int scheme-pointer int))
@@ -197,18 +196,6 @@ EOF
      tm.tv_sec = tm.tv_usec = 0;
      rv = select(fd + 1, &in, NULL, NULL, &tm);
      if(rv > 0) { rv = FD_ISSET(fd, &in) ? 1 : 0; }
-     C_return(rv);") )
-
-(define ##net#select-write
-  (foreign-lambda* int ((int fd))
-    "fd_set out;
-     struct timeval tm;
-     int rv;
-     FD_ZERO(&out);
-     FD_SET(fd, &out);
-     tm.tv_sec = tm.tv_usec = 0;
-     rv = select(fd + 1, NULL, &out, NULL, &tm);
-     if(rv > 0) { rv = FD_ISSET(fd, &out) ? 1 : 0; }
      C_return(rv);") )
 
 (define (yield)
@@ -335,21 +322,11 @@ EOF
 (define-constant +output-chunk-size+ 8192)
 
 (define tcp-buffer-size (make-parameter #f))
-(define tcp-read-timeout)
-(define tcp-write-timeout)
-(define tcp-connect-timeout)
-(define tcp-accept-timeout)
+(define tcp-read-timeout (make-parameter (* 60 1000)))
+(define tcp-write-timeout (make-parameter (* 60 1000)))
+(define tcp-connect-timeout (make-parameter #f))
+(define tcp-accept-timeout (make-parameter #f))
 (define tcp-bind-ipv6-only (make-parameter #f))
-
-(let ()
-  (define ((check loc) x)
-    (when x (##sys#check-exact x loc))
-    x)
-  (define minute (fx* 60 1000))
-  (set! tcp-read-timeout (make-parameter minute (check 'tcp-read-timeout)))
-  (set! tcp-write-timeout (make-parameter minute (check 'tcp-write-timeout))) 
-  (set! tcp-connect-timeout (make-parameter #f (check 'tcp-connect-timeout))) 
-  (set! tcp-accept-timeout (make-parameter #f (check 'tcp-accept-timeout))) )
 
 (define ##net#io-ports
   (let ((tbs tcp-buffer-size))
@@ -590,10 +567,13 @@ EOF
 
 (define general-strerror (foreign-lambda c-string "strerror" int))
 
+(define-inline (network-error where msg . args)
+  (apply 
+   ##sys#signal-hook #:network-error where msg args))
+
 ;; FIXME: allow port string (auto-service lookup) and fix host parsing
 (define (tcp-connect host . more)
-  (let ((port (optional more #f))
-	(tmc (tcp-connect-timeout)))
+  (let ((port (optional more #f)))
     (##sys#check-string host)
     (unless port
       (set!-values (host port) (parse-host-address host))
@@ -601,50 +581,16 @@ EOF
 
     (let ((ai (address-information host service: port protocol: ipproto/tcp))) ;; or sock/stream?
       (when (null? ai)
-	(##sys#signal-hook #:network-error 'tcp-connect "node and/or service lookup failed" host port))
+	(network-error 'tcp-connect "node and/or service lookup failed" host port))
       (let* ((ai (car ai))
 	     (addr (addrinfo-address ai))
-	     (s (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
-	     (s (socket-fileno s)))
-      (define (fail)
-	(##net#close s)
-	(##sys#update-errno)
-	(##sys#signal-hook 
-	 #:network-error 'tcp-connect (##sys#string-append "cannot connect to socket - " strerror) 
-	 host port) )
+	     (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
+	     (s (socket-fileno so)))
       (unless (##net#make-nonblocking s)
 	(##sys#update-errno)
 	(##sys#signal-hook #:network-error 'tcp-connect (##sys#string-append "fcntl() failed - " strerror)) )
-      (when (eq? -1 (##net#connect s (sockaddr-blob addr) (sockaddr-len addr)))
-	(if (eq? errno _einprogress)
-	    (let loop ()
-	      (let ((f (##net#select-write s)))
-		(when (eq? f -1) (fail))
-		(unless (eq? f 1)
-		  (when tmc
-		    (##sys#thread-block-for-timeout!
-		     ##sys#current-thread
-		     (+ (current-milliseconds) tmc) ) )
-		  (##sys#thread-block-for-i/o! ##sys#current-thread s #:all)
-		  (yield)
-		  (when (##sys#slot ##sys#current-thread 13)
-		    (##sys#signal-hook
-		     #:network-timeout-error
-		     'tcp-connect
-		     "connect operation timed out" tmc s) )
-		  (loop) ) ) )
-	    (fail) ) )
-      (let ((err (get-socket-error s)))
-	(cond ((fx= err -1)
-	       (##net#close s)
-	       (##sys#signal-hook 
-		#:network-error 'tcp-connect
-		(##sys#string-append "getsockopt() failed - " strerror)))
-	      ((fx> err 0)
-	       (##net#close s)
-	       (##sys#signal-hook 
-		#:network-error 'tcp-connect
-		(##sys#string-append "cannot create socket - " (general-strerror err))))))
+      (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
+	(socket-connect! so addr))
       (##net#io-ports s) ) ) ) )
 
 (define (##sys#tcp-port->fileno p)

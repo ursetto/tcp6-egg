@@ -318,6 +318,21 @@ static WSADATA wsa;
 
 ;;; socket operations
 
+(define socket-connect-timeout)
+(define socket-read-timeout)
+(define socket-write-timeout)
+(define socket-accept-timeout)
+
+(let ()
+  (define ((check loc) x)
+    (when x (##sys#check-exact x loc))
+    x)
+  (define minute (fx* 60 1000))
+  (set! socket-read-timeout (make-parameter minute (check 'socket-read-timeout)))
+  (set! socket-write-timeout (make-parameter minute (check 'socket-write-timeout))) 
+  (set! socket-connect-timeout (make-parameter #f (check 'socket-connect-timeout))) 
+  (set! socket-accept-timeout (make-parameter #f (check 'socket-accept-timeout))) )
+
 ;; Socket errors under windows probably require the use of WSAGetLastError &
 ;; WSA* error codes.  Note that non-blocking reads are disabled on Windows;
 ;; perhaps this could be fixed.
@@ -327,6 +342,20 @@ static WSADATA wsa;
 (define-foreign-variable _ewouldblock int "EWOULDBLOCK")
 (define-foreign-variable _einprogress int "EINPROGRESS")
 
+(define _close_socket (foreign-lambda int "closesocket" int))
+
+(define select-write
+  (foreign-lambda* int ((int fd))
+    "fd_set out;
+     struct timeval tm;
+     int rv;
+     FD_ZERO(&out);
+     FD_SET(fd, &out);
+     tm.tv_sec = tm.tv_usec = 0;
+     rv = select(fd + 1, NULL, &out, NULL, &tm);
+     if(rv > 0) { rv = FD_ISSET(fd, &out) ? 1 : 0; }
+     C_return(rv);") )
+
 (define-inline (network-error where msg . args)
   (apply 
    ##sys#signal-hook #:network-error where msg args))
@@ -335,6 +364,19 @@ static WSADATA wsa;
   (apply ##sys#signal-hook #:network-error where
          (string-append msg " - " strerrno)
          args))
+
+(define (block-for-timeout! where timeout fd type)
+  (when timeout
+    (##sys#thread-block-for-timeout!
+     ##sys#current-thread
+     (+ (current-milliseconds) timeout)))
+  (##sys#thread-block-for-i/o! ##sys#current-thread fd type)
+  (yield)
+  (when (##sys#slot ##sys#current-thread 13)
+    (##sys#signal-hook
+     #:network-timeout-error
+     where "operation timed out" timeout fd)))
+
 (define-syntax non-nil
   (syntax-rules ()
     ((_ a)
@@ -364,3 +406,37 @@ static WSADATA wsa;
                            (non-nil (integer->socket-type socktype) socktype)
                            (non-nil (integer->protocol-type protocol) protocol)))
     (make-socket s family socktype protocol)))
+
+(define (socket-connect! so saddr)
+  (define _connect (foreign-lambda int "connect" int scheme-pointer int))
+  (define (fail)
+    (_close_socket s)   ;; Note: may update errno.
+    (network-error/errno 'socket-connect! "cannot connect to socket address" s saddr))
+  (let ((s (socket-fileno so))
+        (timeout (socket-connect-timeout)))
+    (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
+      (if (eq? errno _einprogress)
+          (let loop ()
+            (let ((f (select-write s)))
+              (when (eq? f -1) (fail))
+              (unless (eq? f 1)
+                (block-for-timeout! 'socket-connect! timeout s #:all)
+                (loop))
+              ;; http://cr.yp.to/docs/connect.html describes alternative ways to retrieve
+              ;; non-blocking socket errors, other than getsockopt() which may not work on old systems.
+              (let ((err (get-socket-error s)))
+                (cond ((fx= err -1)
+                       (##net#close s)
+                       (##sys#signal-hook 
+                        #:network-error 'tcp-connect
+                        (##sys#string-append "getsockopt() failed - " strerror)))
+                      ((fx> err 0)
+                       (##net#close s)
+                       (##sys#signal-hook 
+                        #:network-error 'tcp-connect
+                        (##sys#string-append "cannot create socket - " (general-strerror err))))))
+              ) )
+          (fail) ) ))
+  ;; perhaps socket address should be stored in socket object
+  (void)
+  )
