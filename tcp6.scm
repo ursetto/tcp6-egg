@@ -191,7 +191,7 @@ EOF
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
 ;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
 
-(define (##net#bind-socket port socktype host)
+(define (bind-socket port socktype host)
   ;; (##sys#check-exact port)
   ;; (when (or (fx< port 0) (fx>= port 65535))
   ;;   (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
@@ -200,24 +200,17 @@ EOF
 	 (ai (address-information host service: port family: family
 				 socktype: socktype flags: ai/passive)))
     (when (null? ai)
-      (##sys#signal-hook 
-       #:network-error 'tcp-listen 
-       "node or service lookup failed" host port))
+      (network-error 'tcp-listen "node or service lookup failed" host port))
     (let* ((ai (car ai))
 	   (addr (addrinfo-address ai)))
-    (let ((s (##net#socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
-     (when (eq? _invalid_socket s)
-       (##sys#update-errno)
-       (##sys#error "cannot create socket") )
+    (let* ((so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
+	   (s (socket-fileno so)))
     ;; PLT makes this an optional arg to tcp-listen. Should we as well?
      (when (eq? -1 ((foreign-lambda* int ((int socket)) 
 		      "int yes = 1; 
                       C_return(setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(int)));") 
 		    s) )
-       (##sys#update-errno)
-       (##sys#signal-hook 
-	#:network-error 'tcp-listen
-	(##sys#string-append "error while setting up socket - " strerror) s) )
+       (network-error/errno 'tcp-listen "error setting SO_REUSEADDR" so))
      (when (= (addrinfo-family ai) af/inet6)
        (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag))
 			"#ifdef IPV6_V6ONLY\n"
@@ -226,20 +219,13 @@ EOF
 			"C_return(0);\n" ;; silently fail
 			"#endif\n")
 		      s (tcp-bind-ipv6-only)))
-       
-	 (##sys#update-errno)
-	 (##sys#signal-hook 
-	  #:network-error 'tcp-listen
-	  (##sys#string-append "error while setting up socket - " strerror) s)))
+	 (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
     
      (let ((b (##net#bind s (sockaddr-blob addr) (sockaddr-len addr))))
        (when (eq? -1 b)
-	 (##sys#update-errno)
-	 (##sys#signal-hook
-	  #:network-error 'tcp-listen
-	  (##sys#string-append "cannot bind to socket - " strerror) s port) )
-       (values s addr)   ;; addr unused by caller
-       ))   )))
+	 (network-error/errno 'socket-bind! "cannot bind to socket" so addr))
+       (values so addr)   ;; addr unused by caller
+       )))))
 
 (define-constant default-backlog 10)
 
@@ -250,13 +236,12 @@ EOF
 
 (define (tcp-listen port . more)
   (let-optionals more ((w default-backlog) (host #f))
-    (let-values (((s addr) (##net#bind-socket port _sock_stream host)))
-      (let ((so (make-socket s 0 0 0)))          ;; FIXME: temporary until bind returns socket obj!
-	(socket-listen! so w)
-	(make-tcp6-listener so)))))
+    (let-values (((so addr) (bind-socket port _sock_stream host)))
+      (socket-listen! so w)
+      (make-tcp6-listener so))))
 
 (define (tcp-listener-fileno tcpl)
-  (socket-fileno (tcp-listener-socket)))
+  (socket-fileno (tcp-listener-socket tcpl)))
 
 (define (tcp-close tcpl)
   (socket-close! (tcp-listener-socket tcpl)))
