@@ -220,12 +220,9 @@ EOF
 			"#endif\n")
 		      s (tcp-bind-ipv6-only)))
 	 (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
-    
-     (let ((b (##net#bind s (sockaddr-blob addr) (sockaddr-len addr))))
-       (when (eq? -1 b)
-	 (network-error/errno 'socket-bind! "cannot bind to socket" so addr))
-       (values so addr)   ;; addr unused by caller
-       )))))
+
+     (socket-bind! so addr)
+     (values so addr)))))
 
 (define-constant default-backlog 10)
 

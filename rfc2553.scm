@@ -1,5 +1,7 @@
 ;; UNIX sockets not supported because they do not exist on Windows (though we could test for this)
 
+;; socket-accept should perhaps return connected peer address
+
 (use foreigners)
 (use srfi-4)
 
@@ -502,6 +504,17 @@ static WSADATA wsa;
     ;; perhaps socket address should be stored in socket object
     (void)))
 
+
+;; (socket-bind! s (addrinfo-address (car (address-information "127.0.0.1" service: 9112 socktype: sock/stream flags: ai/passive))))
+;; ... is verbose; perhaps could be streamlined.
+
+(define (socket-bind! so saddr)
+  (define _bind (foreign-lambda int "bind" int scheme-pointer int))
+  (let ((b (_bind (socket-fileno so) (sockaddr-blob saddr) (sockaddr-len saddr))))
+    (if (eq? -1 b)
+        (network-error/errno 'socket-bind! "cannot bind to socket" so saddr)
+        (void))))
+
 ;; Listening on datagram socket throws an OS error.
 (define (socket-listen! so backlog)
   (define _listen (foreign-lambda int "listen" int int))
@@ -534,3 +547,31 @@ static WSADATA wsa;
             (block-for-timeout! 'socket-accept to s #:input)
             (restart))))))
 
+
+(define (socket-receive! so buf #!optional (start 0) (end #f) (flags 0))
+  (define _recv (foreign-lambda int "recv" int scheme-pointer int int))
+  (define _recvoff (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
+                                         (int len) (int flags))
+                     "C_return(recv(s,((char*)buf)+start,len,flags));"))
+  (let* ((buflen (cond ((string? buf) (string-length buf))
+                       ((blob? buf) (blob-size buf))
+                       (else
+                        (network-error 'socket-receive!
+                                       "receive buffer must be a blob or a string" so))))
+         (end (or end buflen)))
+    (when (or (< start 0)
+              (> end buflen)
+              (< end start))
+      (network-error 'socket-receive! "receive buffer offsets out of range" start end))
+    (let ((len (- end start))
+          (s (socket-fileno so))
+          (to (socket-read-timeout)))
+      (let restart ()
+        (let ((n (_recvoff s buf start len flags)))   ;; FIXME can't set buf start!
+          (cond ((eq? -1 n)
+                 (cond ((eq? errno _ewouldblock)
+                        (block-for-timeout! 'socket-receive! to s #:input)
+                        (restart))
+                       (else
+                        (network-error/errno 'socket-receive! "cannot read from socket" so))))
+                (else n)))))))
