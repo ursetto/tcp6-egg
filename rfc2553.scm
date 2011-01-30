@@ -460,6 +460,8 @@ static WSADATA wsa;
            x)))))
 
 (define-record socket fileno family type protocol)  ;; NB socket? conflicts with Unit posix
+(define-inline (%socket-fileno so)
+  (##sys#slot so 1))
 
 (define-record-printer (socket s out)
   (fprintf out "#<socket fd ~S ~S ~S ~S>"
@@ -549,10 +551,6 @@ static WSADATA wsa;
 
 
 (define (socket-receive! so buf #!optional (start 0) (end #f) (flags 0))
-  (define _recv (foreign-lambda int "recv" int scheme-pointer int int))
-  (define _recvoff (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
-                                         (int len) (int flags))
-                     "C_return(recv(s,((char*)buf)+start,len,flags));"))
   (let* ((buflen (cond ((string? buf) (string-length buf))
                        ((blob? buf) (blob-size buf))
                        (else
@@ -563,15 +561,24 @@ static WSADATA wsa;
               (> end buflen)
               (< end start))
       (network-error 'socket-receive! "receive buffer offsets out of range" start end))
+    (##sys#check-exact flags)
     (let ((len (- end start))
-          (s (socket-fileno so))
           (to (socket-read-timeout)))
-      (let restart ()
-        (let ((n (_recvoff s buf start len flags)))   ;; FIXME can't set buf start!
-          (cond ((eq? -1 n)
-                 (cond ((eq? errno _ewouldblock)
-                        (block-for-timeout! 'socket-receive! to s #:input)
-                        (restart))
-                       (else
-                        (network-error/errno 'socket-receive! "cannot read from socket" so))))
-                (else n)))))))
+      (%socket-receive! so buf start len flags to))))
+
+;; Variant of socket-receive! which does not check so, buf, start, or len and which takes
+;; read timeout as parameter.  Basically for use in socket ports.
+(define (%socket-receive! so buf start len flags timeout)
+  (define _recv_offset (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
+                                             (int len) (int flags))
+                         "C_return(recv(s,((char*)buf)+start,len,flags));"))
+  (let ((s (%socket-fileno so)))
+    (let restart ()
+      (let ((n (_recv_offset s buf start len flags)))
+        (cond ((eq? -1 n)
+               (cond ((eq? errno _ewouldblock)
+                      (block-for-timeout! 'socket-receive! timeout s #:input)
+                      (restart))
+                     (else
+                      (network-error/errno 'socket-receive! "cannot read from socket" so))))
+              (else n))))))

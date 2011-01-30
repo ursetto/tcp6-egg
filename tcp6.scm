@@ -269,7 +269,7 @@ EOF
 	     (tmw (tcp-write-timeout))
 	     (read-input
 	      (lambda ()
-		(let ((n (socket-receive! so buf)))
+		(let ((n (%socket-receive! so buf 0 +input-buffer-size+ 0 tmr)))
 		  (set! buflen n)
 		  (##sys#setislot data 4 n)
 		  (set! bufindex 0))))
