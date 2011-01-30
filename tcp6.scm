@@ -255,8 +255,9 @@ EOF
 
 (define ##net#io-ports
   (let ((tbs tcp-buffer-size))
-    (lambda (fd)
-      (let* ((buf (make-string +input-buffer-size+))
+    (lambda (so)
+      (let* ((fd (socket-fileno so))
+	     (buf (make-string +input-buffer-size+))
 	     (data (vector fd #f #f buf 0))
 	     (buflen 0)
 	     (bufindex 0)
@@ -268,18 +269,10 @@ EOF
 	     (tmw (tcp-write-timeout))
 	     (read-input
 	      (lambda ()
-		(let loop ()
-		  (let ((n (##net#recv fd buf +input-buffer-size+ 0)))
-		    (cond ((eq? -1 n)
-			   (cond ((eq? errno _ewouldblock)
-				  (block-for-timeout! 'socket-receive! tmr fd #:input)
-				  (loop))
-				 (else
-				  (network-error/errno 'socket-receive! "cannot read from socket" fd))))
-			  (else
-			   (set! buflen n)
-			   (##sys#setislot data 4 n)
-			   (set! bufindex 0) ) ) ) ) ) )
+		(let ((n (socket-receive! so buf)))
+		  (set! buflen n)
+		  (##sys#setislot data 4 n)
+		  (set! bufindex 0))))
 	     (in
 	      (make-input-port
 	       (lambda ()
@@ -418,7 +411,7 @@ EOF
 (define (tcp-accept tcpl)
   (parameterize ((socket-accept-timeout (tcp-accept-timeout)))
     (let ((so (socket-accept (tcp-listener-socket tcpl))))
-      (##net#io-ports (socket-fileno so)))))
+      (##net#io-ports so))))
 
 (define (tcp-accept-ready? tcpl)
   (let ((f (select-for-read (tcp-listener-fileno tcpl))))
@@ -445,7 +438,7 @@ EOF
 	     (s (socket-fileno so)))
       (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
 	(socket-connect! so addr))
-      (##net#io-ports s) ) ) ) )
+      (##net#io-ports so) ) ) ) )
 
 (define (##sys#tcp-port->fileno p)
   (let ((data (##sys#port-data p)))
