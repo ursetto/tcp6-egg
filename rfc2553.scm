@@ -464,11 +464,12 @@ static WSADATA wsa;
   (##sys#slot so 1))
 
 (define-record-printer (socket s out)
-  (fprintf out "#<socket fd ~S ~S ~S ~S>"
+  (fprintf out "#<socket ~S ~S ~S>"
            (socket-fileno s)
            (non-nil (integer->address-family (socket-family s)) (socket-family s))
            (non-nil (integer->socket-type (socket-type s)) (socket-type s))
-           (non-nil (integer->protocol-type (socket-protocol s)) (socket-protocol s))))
+           #;(non-nil (integer->protocol-type (socket-protocol s)) (socket-protocol s))
+           ))
 
 (define (socket family socktype protocol)
   (define _socket (foreign-lambda int "socket" int int int))
@@ -482,11 +483,11 @@ static WSADATA wsa;
 
 (define (socket-connect! so saddr)
   (define _connect (foreign-lambda int "connect" int scheme-pointer int))
-  (define (fail)
-    (_close_socket s)   ;; Note: may update errno.
-    (network-error/errno 'socket-connect! "cannot connect to socket address" s saddr))
   (let ((s (socket-fileno so))
         (timeout (socket-connect-timeout)))
+    (define (fail)
+      (_close_socket s)   ;; Note: may update errno.
+      (network-error/errno 'socket-connect! "cannot connect to socket address" so saddr))
     (unless (_make_socket_nonblocking s)
       (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
@@ -500,8 +501,10 @@ static WSADATA wsa;
               (cond ((get-socket-error s)
                      => (lambda (err)
                           (_close_socket s)
-                          (network-error 'tcp-connect "cannot create socket - "
-                                         (strerror err)))))))
+                          (network-error 'socket-connect!
+                                         (string-append "cannot initiate connection - "
+                                                        (strerror err))
+                                         so saddr))))))
           (fail)))
     ;; perhaps socket address should be stored in socket object
     (void)))
@@ -550,6 +553,7 @@ static WSADATA wsa;
             (restart))))))
 
 
+;; Returns number of bytes received.  If 0, and socket is sock/stream, peer has shut down his side.
 (define (socket-receive! so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
                        ((blob? buf) (blob-size buf))
@@ -557,14 +561,14 @@ static WSADATA wsa;
                         (network-error 'socket-receive!
                                        "receive buffer must be a blob or a string" so))))
          (end (or end buflen)))
-    (when (or (< start 0)
-              (> end buflen)
-              (< end start))
-      (network-error 'socket-receive! "receive buffer offsets out of range" start end))
+    (##sys#check-exact start)    
+    (##sys#check-exact end)
     (##sys#check-exact flags)
-    (let ((len (- end start))
-          (to (socket-read-timeout)))
-      (%socket-receive! so buf start len flags to))))
+    (when (or (fx< start 0)
+              (fx> end buflen)
+              (fx< end start))
+      (network-error 'socket-receive! "receive buffer offsets out of range" start end))
+    (%socket-receive! so buf start (fx- end start) flags (socket-read-timeout))))
 
 ;; Variant of socket-receive! which does not check so, buf, start, or len and which takes
 ;; read timeout as parameter.  Basically for use in socket ports.
@@ -582,3 +586,70 @@ static WSADATA wsa;
                      (else
                       (network-error/errno 'socket-receive! "cannot read from socket" so))))
               (else n))))))
+
+(define (socket-send! so buf #!optional (start 0) (end #f) (flags 0))
+  (let* ((buflen (cond ((string? buf) (string-length buf))
+                       ((blob? buf) (blob-size buf))
+                       (else
+                        (network-error 'socket-send!
+                                       "send buffer must be a blob or a string" so))))
+         (end (or end buflen)))
+    (##sys#check-exact start)
+    (##sys#check-exact end)
+    (##sys#check-exact flags)
+    (when (or (fx< start 0)
+              (fx> end buflen)
+              (fx< end start))
+      (network-error 'socket-send! "send buffer offsets out of range" start end))
+    (%socket-send! so buf start (fx- end start) flags (socket-write-timeout))))
+(define (%socket-send! so buf start len flags timeout)
+  (define _send_offset (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
+                                             (int len) (int flags))
+                         "C_return(send(s,((char*)buf)+start,len,flags));"))
+  (let ((s (%socket-fileno so)))
+    (let retry ((len len) (start start))
+      (let ((n (_send_offset s buf start len flags)))
+        (cond ((eq? -1 n)
+               (cond ((eq? errno _ewouldblock)
+                      (block-for-timeout! 'socket-send! timeout s #:output)
+                      (retry len start))
+                     (else
+                      (network-error/errno 'socket-send! "cannot send to socket" so))))
+              (else n))))))
+
+(define-foreign-variable +maximum-string-length+ int "C_HEADER_SIZE_MASK")  ;; horrible
+;; NB.  Possible the chunking functionality belongs in %socket-send.  We *could* limit
+;; the packet size there.
+(define (%socket-send-all! so buf start slen flags timeout chunksz)
+  (let ((chunksz (or chunksz +maximum-string-length+)))
+    (let loop ((len slen) (start start))
+      (let* ((count (fxmin chunksz len))
+             (n (%socket-send! so buf start count flags timeout)))
+        (if (fx< n len)
+            (loop (fx- len n) (fx+ start n))
+            slen))))) ;; void?
+
+;; Socket output chunk size for send-all.  For compatibility with Unit TCP; maybe not necessary.
+;; If #f, attempt to send as much as possible.  Only question is whether it is safe to exceed
+;; the socket send buffer size, which may (according to Microsoft pages) cause stalling until
+;; delayed ACKs come back.
+(define socket-send-size (make-parameter 16384)) 
+
+(define (socket-send-all! so buf #!optional (start 0) (end #f) (flags 0))
+  (let* ((buflen (cond ((string? buf) (string-length buf))
+                       ((blob? buf) (blob-size buf))
+                       (else
+                        (network-error 'socket-send-all!
+                                       "send buffer must be a blob or a string" so))))
+         (end (or end buflen)))
+    (##sys#check-exact start)
+    (##sys#check-exact end)
+    (##sys#check-exact flags)
+    (when (or (fx< start 0)
+              (fx> end buflen)
+              (fx< end start))
+      (network-error 'socket-send-all! "send buffer offsets out of range" start end))
+    (%socket-send-all! so buf start (fx- end start) flags
+                       (socket-write-timeout)
+                       (socket-send-size))))
+

@@ -106,22 +106,9 @@ EOF
 (define-foreign-variable _sockaddr_in_size int "sizeof(struct sockaddr_in)")
 (define-foreign-variable _sd_receive int "SD_RECEIVE")
 (define-foreign-variable _sd_send int "SD_SEND")
-(define-foreign-variable _ipproto_tcp int "IPPROTO_TCP")
-(define-foreign-variable _invalid_socket int "INVALID_SOCKET")
-(define-foreign-variable _ewouldblock int "EWOULDBLOCK")
 
-(define ##net#socket (foreign-lambda int "socket" int int int))
-(define ##net#bind (foreign-lambda int "bind" int scheme-pointer int))
-(define ##net#accept (foreign-lambda int "accept" int c-pointer c-pointer))
 (define ##net#close (foreign-lambda int "closesocket" int))
-(define ##net#recv (foreign-lambda int "recv" int scheme-pointer int int))
 (define ##net#shutdown (foreign-lambda int "shutdown" int int))
-(define ##net#connect (foreign-lambda int "connect" int scheme-pointer int))
-
-(define ##net#send
-  (foreign-lambda* 
-      int ((int s) (scheme-pointer msg) (int offset) (int len) (int flags))
-    "C_return(send(s, (char *)msg+offset, len, flags));"))
 
 (define ##net#getsockname 
   (foreign-lambda* c-string ((int s))
@@ -191,14 +178,11 @@ EOF
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
 ;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
 
-(define (bind-socket port socktype host)
-  ;; (##sys#check-exact port)
-  ;; (when (or (fx< port 0) (fx>= port 65535))
-  ;;   (##sys#signal-hook #:domain-error 'tcp-listen "invalid port number" port) )
+(define (bind-tcp-socket port host)
   (let* ((family (if (and (not host) (tcp-bind-ipv6-only))
 		     af/inet #f))
 	 (ai (address-information host service: port family: family
-				 socktype: socktype flags: ai/passive)))
+				  socktype: sock/stream flags: ai/passive)))
     (when (null? ai)
       (network-error 'tcp-listen "node or service lookup failed" host port))
     (let* ((ai (car ai))
@@ -220,9 +204,8 @@ EOF
 			"#endif\n")
 		      s (tcp-bind-ipv6-only)))
 	 (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
-
      (socket-bind! so addr)
-     (values so addr)))))
+     so))))
 
 (define-constant default-backlog 10)
 
@@ -231,11 +214,10 @@ EOF
   tcp-listener?
   (socket tcp-listener-socket))
 
-(define (tcp-listen port . more)
-  (let-optionals more ((w default-backlog) (host #f))
-    (let-values (((so addr) (bind-socket port _sock_stream host)))
-      (socket-listen! so w)
-      (make-tcp6-listener so))))
+(define (tcp-listen port #!optional (w default-backlog) host)
+  (let ((so (bind-tcp-socket port host)))
+    (socket-listen! so w)
+    (make-tcp6-listener so)))
 
 (define (tcp-listener-fileno tcpl)
   (socket-fileno (tcp-listener-socket tcpl)))
@@ -267,6 +249,7 @@ EOF
 	     (outbuf (and outbufsize (fx> outbufsize 0) ""))
 	     (tmr (tcp-read-timeout))
 	     (tmw (tcp-write-timeout))
+	     (output-chunk-size (socket-send-size))
 	     (read-input
 	      (lambda ()
 		(let ((n (%socket-receive! so buf 0 +input-buffer-size+ 0 tmr)))
@@ -360,19 +343,8 @@ EOF
 	       ;;         str)))
 	       ) )
 	     (output
-	      (lambda (s)
-		(let loop ((len (##sys#size s))
-			   (offset 0))
-		  (let* ((count (fxmin +output-chunk-size+ len))
-			 (n (##net#send fd s offset count 0)) )
-		    (cond ((eq? -1 n)
-			   (cond ((eq? errno _ewouldblock)
-				  (block-for-timeout! 'socket-send! tmw fd #:output)
-				  (loop len offset))
-				 (else
-				  (network-error/errno 'socket-send! "cannot write to socket" fd))))
-			  ((fx< n len)
-			   (loop (fx- len n) (fx+ offset n)) ) ) ) ) ) )
+	      (lambda (str)
+		(%socket-send-all! so str 0 (string-length str) 0 tmw output-chunk-size)))
 	     (out
 	      (make-output-port
 	       (if outbuf
