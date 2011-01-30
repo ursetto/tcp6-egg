@@ -1,4 +1,6 @@
-;; tcp-connect should try all addresses
+;; tcp-connect should try all addresses.  Either catch socket-connect! exception,
+;; or change socket-connect! to allow multiple addresses.  e.g. (socket-connect! so addr1 addr2)...
+;; tcp-connect should be allowed to connect to only 1 address (or addrinfo list)
 
 ;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
 ;; tcp-listen accepts service name string

@@ -464,7 +464,7 @@ static WSADATA wsa;
   (##sys#slot so 1))
 
 (define-record-printer (socket s out)
-  (fprintf out "#<socket ~S ~S ~S>"
+  (fprintf out "#<socket fd:~S ~S ~S>"
            (socket-fileno s)
            (non-nil (integer->address-family (socket-family s)) (socket-family s))
            (non-nil (integer->socket-type (socket-type s)) (socket-type s))
@@ -487,7 +487,7 @@ static WSADATA wsa;
         (timeout (socket-connect-timeout)))
     (define (fail)
       (_close_socket s)   ;; Note: may update errno.
-      (network-error/errno 'socket-connect! "cannot connect to socket address" so saddr))
+      (network-error/errno 'socket-connect! "cannot initiate connection" so saddr))
     (unless (_make_socket_nonblocking s)
       (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
