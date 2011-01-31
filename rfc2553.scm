@@ -386,7 +386,7 @@ static WSADATA wsa;
          (string-append msg " - " strerrno)
          args))
 
-(define (block-for-timeout! where timeout fd type)  ;; #f permitted for WHERE
+(define (block-for-timeout! where timeout fd type #!optional cleanup)  ;; #f permitted for WHERE
   (when timeout
     (##sys#thread-block-for-timeout!
      ##sys#current-thread
@@ -394,6 +394,7 @@ static WSADATA wsa;
   (##sys#thread-block-for-i/o! ##sys#current-thread fd type)
   (##sys#thread-yield!)
   (when (##sys#slot ##sys#current-thread 13)
+    (if cleanup (cleanup))
     (##sys#signal-hook
      #:network-timeout-error
      where "operation timed out" timeout fd)))
@@ -496,7 +497,8 @@ static WSADATA wsa;
             (let ((f (select-for-write s)))
               (when (eq? f -1) (fail))
               (unless (eq? f 1)
-                (block-for-timeout! 'socket-connect! timeout s #:all)
+                (block-for-timeout! 'socket-connect! timeout s #:all
+                                    (lambda () (_close_socket s)))  ;; close socket (abort) on timeout
                 (loop))
               (cond ((get-socket-error s)
                      => (lambda (err)

@@ -40,7 +40,7 @@
  
   (use extras ;; scheduler
        )
-  ;; (export tcp-close tcp-listen tcp-connect tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
+  ;; (export tcp-close tcp-listen tcp-connect tcp-connect/ai tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
   ;;         tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size tcp-listener-socket
   ;;         tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout)
   (foreign-declare #<<EOF
@@ -397,22 +397,46 @@ EOF
   (apply 
    ##sys#signal-hook #:network-error where msg args))
 
+;; Sequentially connect to all addrinfo objects until one succeeds, as long
+;; as the connection is retryable (e.g. refused, no route, or timeout).
+;; Otherwise it will error out on non-recoverable errors.
+;; Silently skips non-stream objects for user convenience.
+;; Returns: I/O ports bound to the succeeding connection, or throws an error.
+(define (tcp-connect/ai ais)
+  (define (%tcp-connect/ai ais)
+    (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
+      (let loop ((ais ais))
+	(when (null? ais)
+	  (network-error 'tcp-connect/ai "no further addresses to connect to"))
+	(let ((ai (car ais)))
+	  (if (not (eq? (addrinfo-protocol ai) ipproto/tcp))
+	      (loop (cdr ais))
+	      (let* ((addr (addrinfo-address ai))
+		     (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
+		     (s (socket-fileno so)))
+		(if (null? (cdr ais))
+		    (begin (socket-connect! so addr) so)
+		    (condition-case
+		     (begin (socket-connect! so addr) so)
+		     (e (exn i/o net timeout)
+			(print "timeout: " e)
+			(loop (cdr ais)))
+		     ;; FIXME: Should actually check for simple connect error.
+		     (e (exn i/o net)
+			(print "network error: " e)
+			(loop (cdr ais)))))))))))
+  (##net#io-ports (%tcp-connect/ai ais)))
+
 (define (tcp-connect host . more)
   (let ((port (optional more #f)))
     (##sys#check-string host)
     (unless port
       (set!-values (host port) (parse-inet-address host))
       (unless port (network-error 'tcp-connect "no port specified" host)))
-    (let ((ai (address-information host service: port protocol: ipproto/tcp))) ;; or sock/stream?
-      (when (null? ai)
+    (let ((ais (address-information host service: port protocol: ipproto/tcp)))  ;; or sock/stream?
+      (when (null? ais)
 	(network-error 'tcp-connect "node and/or service lookup failed" host port))
-      (let* ((ai (car ai))
-	     (addr (addrinfo-address ai))
-	     (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
-	     (s (socket-fileno so)))
-      (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
-	(socket-connect! so addr))
-      (##net#io-ports so) ) ) ) )
+      (tcp-connect/ai ais))))
 
 (define (##sys#tcp-port->fileno p)
   (let ((data (##sys#port-data p)))
