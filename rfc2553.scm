@@ -1,6 +1,7 @@
 ;; UNIX sockets not supported because they do not exist on Windows (though we could test for this)
 
 ;; socket-accept should perhaps return connected peer address
+;; not all errors close the socket (probably should)
 
 (use foreigners)
 (use srfi-4)
@@ -26,6 +27,17 @@ static WSADATA wsa;
 # define fcntl(a, b, c)  0
 # define EWOULDBLOCK     0
 # define EINPROGRESS     0
+
+#ifndef SHUT_RD
+# define SHUT_RD SD_RECEIVE
+#endif
+#ifndef SHUT_WR
+# define SHUT_WR SD_SEND
+#endif
+#ifndef SHUT_RDWR
+# define SHUT_RDWR SD_BOTH
+#endif
+
 # define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\\
     getsockopt(socket, level, optname, (char *)optval, optlen)
 #else
@@ -320,6 +332,19 @@ static WSADATA wsa;
 
 ;;; socket operations
 
+(define socket-startup
+  (foreign-lambda* bool () "
+#ifdef _WIN32
+     C_return(WSAStartup(MAKEWORD(1, 1), &wsa) == 0);
+#else
+     signal(SIGPIPE, SIG_IGN);
+     C_return(1);
+#endif
+"))
+
+(unless (socket-startup)   ;; hopefully, this is safe to run multiple times
+  (network-error 'socket-startup "cannot initialize socket code"))
+
 (define socket-connect-timeout)
 (define socket-read-timeout)
 (define socket-write-timeout)
@@ -347,6 +372,13 @@ static WSADATA wsa;
 (define-foreign-variable _etimedout int "ETIMEDOUT")
 (define-foreign-variable _enetunreach int "ENETUNREACH")
 (define-foreign-variable _ehostunreach int "EHOSTUNREACH")
+
+(define-foreign-variable SHUT_RD int "SHUT_RD")
+(define-foreign-variable SHUT_WR int "SHUT_WR")
+(define-foreign-variable SHUT_RDWR int "SHUT_RDWR")
+(define shut/rd SHUT_RD)
+(define shut/wr SHUT_WR)
+(define shut/rdwr SHUT_RDWR)
 
 (define _close_socket (foreign-lambda int "closesocket" int))
 (define strerror (foreign-lambda c-string "strerror" int))
@@ -689,3 +721,8 @@ static WSADATA wsa;
                        (socket-write-timeout)
                        (socket-send-size))))
 
+(define (socket-shutdown! so how)  ;; how: shut/rd, shut/wr, shut/rdwr
+  (define _shutdown (foreign-lambda int "shutdown" int int))
+  (if (eq? -1 (_shutdown (socket-fileno so) how))
+      (network-error/errno 'socket-shutdown! "unable to shutdown socket" so how)
+      (void)))

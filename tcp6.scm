@@ -106,11 +106,8 @@ EOF
 (define-foreign-variable _sock_dgram int "SOCK_DGRAM")
 (define-foreign-variable _sockaddr_size int "sizeof(struct sockaddr)")
 (define-foreign-variable _sockaddr_in_size int "sizeof(struct sockaddr_in)")
-(define-foreign-variable _sd_receive int "SD_RECEIVE")
-(define-foreign-variable _sd_send int "SD_SEND")
 
 (define ##net#close (foreign-lambda int "closesocket" int))
-(define ##net#shutdown (foreign-lambda int "shutdown" int int))
 
 (define ##net#getsockname 
   (foreign-lambda* c-string ((int s))
@@ -149,20 +146,6 @@ EOF
     "if(getpeername(s, (struct sockaddr *)&ss, ((socklen_t *)&len)) != 0) C_return(NULL);"
     "if(getnameinfo((struct sockaddr *)&ss, len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST)) C_return(NULL);"
     "C_return(ip);") )
-
-(define ##net#startup
-  (foreign-lambda* bool () #<<EOF
-#ifdef _WIN32
-     C_return(WSAStartup(MAKEWORD(1, 1), &wsa) == 0);
-#else
-     signal(SIGPIPE, SIG_IGN);
-     C_return(1);
-#endif
-EOF
-) )
-
-(unless (##net#startup)
-  (##sys#signal-hook #:network-error "cannot initialize Winsock") )
 
 (define ##net#select
   (foreign-lambda* int ((int fd))
@@ -281,13 +264,10 @@ EOF
 	       (lambda ()
 		 (unless iclosed
 		   (set! iclosed #t)
-		   (unless (##sys#slot data 1) (##net#shutdown fd _sd_receive))
-		   (when (and oclosed (eq? -1 (##net#close fd)))
-		     (##sys#update-errno)
-		     (##sys#signal-hook
-		      #:network-error
-		      (##sys#string-append "cannot close socket input port - " strerror)
-		      fd) ) ) )
+		   (unless (##sys#slot data 1)
+		     (socket-shutdown! so shut/rd))
+		   (when oclosed
+		     (socket-close! so))))
 	       (lambda ()
 		 (when (fx>= bufindex buflen)
 		   (read-input))
@@ -364,11 +344,10 @@ EOF
 		   (when (and outbuf (fx> (##sys#size outbuf) 0))
 		     (output outbuf)
 		     (set! outbuf "") )
-		   (unless (##sys#slot data 2) (##net#shutdown fd _sd_send))
-		   (when (and iclosed (eq? -1 (##net#close fd)))
-		     (##sys#update-errno)
-		     (##sys#signal-hook
-		      #:network-error (##sys#string-append "cannot close socket output port - " strerror) fd) ) ) )
+		   (unless (##sys#slot data 2)
+		     (socket-shutdown! so shut/wr))
+		   (when iclosed
+		     (socket-close! so))))
 	       (and outbuf
 		    (lambda ()
 		      (when (fx> (##sys#size outbuf) 0)
