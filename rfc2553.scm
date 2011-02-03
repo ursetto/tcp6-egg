@@ -343,6 +343,10 @@ static WSADATA wsa;
 (define-foreign-variable _invalid_socket int "INVALID_SOCKET")
 (define-foreign-variable _ewouldblock int "EWOULDBLOCK")
 (define-foreign-variable _einprogress int "EINPROGRESS")
+(define-foreign-variable _econnrefused int "ECONNREFUSED")
+(define-foreign-variable _etimedout int "ETIMEDOUT")
+(define-foreign-variable _enetunreach int "ENETUNREACH")
+(define-foreign-variable _ehostunreach int "EHOSTUNREACH")
 
 (define _close_socket (foreign-lambda int "closesocket" int))
 (define strerror (foreign-lambda c-string "strerror" int))
@@ -482,32 +486,62 @@ static WSADATA wsa;
                            (non-nil (integer->protocol-type protocol) protocol)))
     (make-socket s family socktype protocol)))
 
+
+;; FIXME Terrible name and implementation.  Maybe this should be called a "transient" connect error
+;; -- i.e. one that could be retried
+(define (nonfatal-connect-error where msg . args)
+  (abort
+   (make-composite-condition
+    (make-property-condition 'exn 'location where 'message msg 'arguments args)
+    (make-property-condition 'i/o)
+    (make-property-condition 'net 'nonfatal #t))))
+
+;; note: consider including errno
+(define-inline (nonfatal-connect-error/errno where msg . args)
+  (##sys#update-errno)
+  (apply nonfatal-connect-error where (string-append msg " - " strerrno)
+         args))
+
+(define nonfatal-connect-exception?
+  (condition-property-accessor 'net 'nonfatal #f))
+
+;; Returns a special "nonfatal" error if connection failure was due to refusal,
+;; network down, etc.; in which case, another address could be tried.  (The socket
+;; is still closed, though.)
 (define (socket-connect! so saddr)
   (define _connect (foreign-lambda int "connect" int scheme-pointer int))
+  (define (refused? err)
+    (or (eq? err _econnrefused) (eq? err _etimedout)
+        (eq? err _enetunreach) (eq? err _ehostunreach)))
   (let ((s (socket-fileno so))
         (timeout (socket-connect-timeout)))
-    (define (fail)
-      (_close_socket s)   ;; Note: may update errno.
-      (network-error/errno 'socket-connect! "cannot initiate connection" so saddr))
     (unless (_make_socket_nonblocking s)
       (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
       (if (eq? errno _einprogress)
           (let loop ()
             (let ((f (select-for-write s)))
-              (when (eq? f -1) (fail))
+              (when (eq? f -1)
+                (network-error/errno 'socket-connect! "select failed" so))
               (unless (eq? f 1)
                 (block-for-timeout! 'socket-connect! timeout s #:all
-                                    (lambda () (_close_socket s)))  ;; close socket (abort) on timeout
+                                    (lambda () (_close_socket s))) ;; close socket (abort) on timeout
                 (loop))
               (cond ((get-socket-error s)
                      => (lambda (err)
                           (_close_socket s)
-                          (network-error 'socket-connect!
-                                         (string-append "cannot initiate connection - "
-                                                        (strerror err))
-                                         so saddr))))))
-          (fail)))
+                          ((if (refused? err)
+                               nonfatal-connect-error
+                               network-error)
+                           'socket-connect! (string-append "cannot initiate connection - "
+                                                           (strerror err))
+                           so saddr))))))
+          (begin
+            (_close_socket s) ;; Note: may update errno.
+            ((if (refused? errno)
+                nonfatal-connect-error/errno
+                network-error/errno)
+              'socket-connect! "cannot initiate connection" so saddr))))
     ;; perhaps socket address should be stored in socket object
     (void)))
 

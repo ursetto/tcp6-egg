@@ -401,30 +401,30 @@ EOF
 ;; as the connection is retryable (e.g. refused, no route, or timeout).
 ;; Otherwise it will error out on non-recoverable errors.
 ;; Silently skips non-stream objects for user convenience.
-;; Returns: I/O ports bound to the succeeding connection, or throws an error.
+;; Returns: I/O ports bound to the succeeding connection, or throws an error
+;; corresponding to the last failed connection attempt.
 (define (tcp-connect/ai ais)
   (define (%tcp-connect/ai ais)
-    (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
-      (let loop ((ais ais))
-	(when (null? ais)
-	  (network-error 'tcp-connect/ai "no further addresses to connect to"))
-	(let ((ai (car ais)))
-	  (if (not (eq? (addrinfo-protocol ai) ipproto/tcp))
-	      (loop (cdr ais))
-	      (let* ((addr (addrinfo-address ai))
-		     (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
-		     (s (socket-fileno so)))
-		(if (null? (cdr ais))
-		    (begin (socket-connect! so addr) so)
-		    (condition-case
-		     (begin (socket-connect! so addr) so)
-		     (e (exn i/o net timeout)
-			(print "timeout: " e)
-			(loop (cdr ais)))
-		     ;; FIXME: Should actually check for simple connect error.
-		     (e (exn i/o net)
-			(print "network error: " e)
-			(loop (cdr ais)))))))))))
+    (let ((ais (filter (lambda (ai) (eq? (addrinfo-protocol ai) ipproto/tcp))
+		       ais)))  ;; Filter first to preserve our "last exception" model.
+      (when (null? ais)
+	(network-error 'tcp-connect/ai "no addresses to connect to"))
+      (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
+	(let loop ((ais ais))
+	  (let* ((ai (car ais))
+		 (addr (addrinfo-address ai))
+		 (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
+		 (s (socket-fileno so)))
+	    (if (null? (cdr ais))
+		(begin (socket-connect! so addr) so)
+		(condition-case
+		 (begin (socket-connect! so addr) so)
+		 (e (exn i/o net timeout)
+		    (loop (cdr ais)))
+		 (e (exn i/o net)
+		    (if (nonfatal-connect-exception? e)
+			(loop (cdr ais))
+			(signal e))))))))))
   (##net#io-ports (%tcp-connect/ai ais)))
 
 (define (tcp-connect host . more)
