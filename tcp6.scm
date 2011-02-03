@@ -147,22 +147,17 @@ EOF
     "if(getnameinfo((struct sockaddr *)&ss, len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST)) C_return(NULL);"
     "C_return(ip);") )
 
-(define ##net#select
-  (foreign-lambda* int ((int fd))
-    "fd_set in;
-     struct timeval tm;
-     int rv;
-     FD_ZERO(&in);
-     FD_SET(fd, &in);
-     tm.tv_sec = tm.tv_usec = 0;
-     rv = select(fd + 1, &in, NULL, NULL, &tm);
-     if(rv > 0) { rv = FD_ISSET(fd, &in) ? 1 : 0; }
-     C_return(rv);") )
+(define-inline (network-error where msg . args)
+  (apply ##sys#signal-hook #:network-error where msg args))
+(define-inline (network-error/errno where msg . args)
+  (##sys#update-errno)
+  (apply ##sys#signal-hook #:network-error where
+         (string-append msg " - " strerrno)
+         args))
 
 ;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
 ;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
-
 (define (bind-tcp-socket port host)
   (let* ((family (if (and (not host) (tcp-bind-ipv6-only))
 		     af/inet #f))
@@ -253,14 +248,7 @@ EOF
 		       c) ) )
 	       (lambda ()
 		 (or (fx< bufindex buflen)
-		     (let ((f (##net#select fd)))
-		       (when (eq? f -1)
-			 (##sys#update-errno)
-			 (##sys#signal-hook
-			  #:network-error
-			  (##sys#string-append "cannot check socket for input - " strerror) 
-			  fd) )
-		       (eq? f 1) ) ) )
+		     (socket-receive-ready? so)))
 	       (lambda ()
 		 (unless iclosed
 		   (set! iclosed #t)
@@ -367,10 +355,7 @@ EOF
       (##net#io-ports so))))
 
 (define (tcp-accept-ready? tcpl)
-  (let ((f (select-for-read (tcp-listener-fileno tcpl))))
-    (when (eq? -1 f)
-      (network-error/errno 'tcp-accept-ready? "cannot check socket for input" tcpl))
-    (eq? 1 f) ) )
+  (socket-accept-ready? (tcp-listener-socket tcpl)))
 
 (define-inline (network-error where msg . args)
   (apply 

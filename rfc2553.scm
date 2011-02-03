@@ -414,8 +414,7 @@ static WSADATA wsa;
      C_return(rv);") )
 
 (define-inline (network-error where msg . args)
-  (apply 
-   ##sys#signal-hook #:network-error where msg args))
+  (apply ##sys#signal-hook #:network-error where msg args))
 (define-inline (network-error/errno where msg . args)
   (##sys#update-errno)
   (apply ##sys#signal-hook #:network-error where
@@ -620,7 +619,6 @@ static WSADATA wsa;
             (block-for-timeout! 'socket-accept to s #:input)
             (restart))))))
 
-
 ;; Returns number of bytes received.  If 0, and socket is sock/stream, peer has shut down his side.
 (define (socket-receive! so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
@@ -654,6 +652,13 @@ static WSADATA wsa;
                      (else
                       (network-error/errno 'socket-receive! "cannot read from socket" so))))
               (else n))))))
+
+(define (socket-receive-ready? so)
+  (let ((f (select-for-read (socket-fileno so))))
+    (when (eq? -1 f)
+      (network-error/errno 'socket-receive-ready? "unable to check socket for input" so))
+    (eq? 1 f)))
+(define socket-accept-ready? socket-receive-ready?)
 
 (define (socket-send! so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
