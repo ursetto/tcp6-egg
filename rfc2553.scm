@@ -7,14 +7,13 @@
 (use srfi-4)
 
 (foreign-declare "
-#include <sys/socket.h>
-#include <netdb.h>
-")
-
-
-(foreign-declare "
 #include <errno.h>
 #ifdef _WIN32
+/* Unconditionally require Windows XP (0x501) for getaddrinfo.  It is not known
+   how to autodetect missing getaddrinfo support.  These funcs are supported
+   on W2k and even earlier with native SDK (Wspiapi.h), but MinGW does not support them. */
+#define _WIN32_WINNT 0x501
+
 # if (defined(HAVE_WINSOCK2_H) && defined(HAVE_WS2TCPIP_H))
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
@@ -54,10 +53,11 @@ static WSADATA wsa;
 # define typecorrect_getsockopt getsockopt
 #endif
 
-#ifndef SD_RECEIVE
-# define SD_RECEIVE      0
-# define SD_SEND         1
-#endif
+#define ECONNREFUSED WSAECONNREFUSED
+#define ETIMEDOUT WSAETIMEDOUT
+/* May need to test WSAEHOSTDOWN as well */
+#define ENETUNREACH WSAENETUNREACH
+#define EHOSTUNREACH WSAEHOSTUNREACH
 
 #ifdef ECOS
 #include <sys/sockio.h>
@@ -72,10 +72,10 @@ static WSADATA wsa;
   ((af/unspec AF_UNSPEC) AF_UNSPEC)
   ((af/inet AF_INET) AF_INET)
   ((af/inet6 AF_INET6) AF_INET6)
-  ((af/unix AF_LOCAL) AF_LOCAL))
+  ((af/unix AF_UNIX) AF_UNIX))
 (define af/inet AF_INET)
 (define af/inet6 AF_INET6)
-(define af/local AF_LOCAL)
+(define af/unix AF_UNIX)
 
 (define-foreign-enum-type (socket-type int)
   (socket-type->integer integer->socket-type)
@@ -132,7 +132,7 @@ static WSADATA wsa;
 ;; (define (sockaddr-path A)          ;; not supported on Windows
 ;;   ((foreign-lambda* c-string ((scheme-pointer sa))
 ;;      "switch (((struct sockaddr*)sa)->sa_family) {"
-;;      "case AF_LOCAL: C_return(((struct sockaddr_un*)sa)->sun_path);"
+;;      "case AF_UNIX: C_return(((struct sockaddr_un*)sa)->sun_path);"
 ;;      "default: C_return(NULL); }"
 ;;      )
 ;;    (sockaddr-blob A)))
@@ -144,7 +144,7 @@ static WSADATA wsa;
     (cond ((or (= af AF_INET)
                (= af AF_INET6))
            (car (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV))))
-          ((= af AF_LOCAL)
+          ((= af AF_UNIX)
            (sockaddr-path A))
           (else #f))))
 (define (sockaddr-port A)
@@ -174,7 +174,7 @@ static WSADATA wsa;
                  (if (= af AF_INET6)
                      (string-append "[" h "]" ":" p)
                      (string-append h ":" p)))))
-          ((= af AF_LOCAL)
+          ((= af AF_UNIX)
            (sockaddr-path A))  ;; or reach directly into blob here
           (else
            #f))))
@@ -736,17 +736,21 @@ static WSADATA wsa;
   (define _free (foreign-lambda void "C_free" c-pointer))
   (let-location ((len int))
     (let ((sa (_getsockname (socket-fileno so) (location len))))
-      (let ((addr (sa->sockaddr sa len)))
-        (_free sa)
-        addr))))
+      (if (fx= sa -1)
+          (network-error/errno 'socket-name "unable to get socket name" so)
+          (let ((addr (sa->sockaddr sa len)))
+            (_free sa)
+            addr)))))
 
 (define (socket-peer-name so)
   (define _free (foreign-lambda void "C_free" c-pointer))
   (let-location ((len int))
     (let ((sa (_getpeername (socket-fileno so) (location len))))
-      (let ((addr (sa->sockaddr sa len)))
-        (_free sa)
-        addr))))
+      (if (fx= sa -1)
+          (network-error/errno 'socket-peer-name "unable to get socket peer name" so)
+          (let ((addr (sa->sockaddr sa len)))
+            (_free sa)
+            addr)))))
 
 (define _getsockname
   (foreign-lambda* c-pointer ((int s) ((c-pointer int) len))

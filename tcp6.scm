@@ -9,6 +9,10 @@
 ;; creating a 'socket port (slot 7) will allow posixunix to call ##sys#tcp-port->fileno,
 ;; which will bomb
 
+;; getnameinfo fails with WSANO_DATA when provided with an IP sans service port.
+;; Doesn't look like WinXP issues SRV requests; it just fails when trying to
+;; translate a service it doesn't understand, such as ssh.
+
 ;;;; tcp.scm - Networking stuff
 ;
 ; Copyright (c) 2008-2011, The Chicken Team
@@ -106,46 +110,6 @@ EOF
 (define-foreign-variable _sock_dgram int "SOCK_DGRAM")
 (define-foreign-variable _sockaddr_size int "sizeof(struct sockaddr)")
 (define-foreign-variable _sockaddr_in_size int "sizeof(struct sockaddr_in)")
-
-(define ##net#close (foreign-lambda int "closesocket" int))
-
-(define ##net#getsockname 
-  (foreign-lambda* c-string ((int s))
-    "struct sockaddr_storage ss;"
-    "char ip[NI_MAXHOST];"
-    "int len = sizeof(ss);"
-    "if(getsockname(s, (struct sockaddr *)&ss, (socklen_t *)&len) != 0) C_return(NULL);"
-    "if(getnameinfo((struct sockaddr *)&ss, len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST)) C_return(NULL);"
-    "C_return(ip);"))
-
-(define ##net#getsockport
-  (foreign-lambda* int ((int s))
-    "struct sockaddr_storage ss;"
-    "int len = sizeof(ss);"
-    "if(getsockname(s, (struct sockaddr *)&ss, (socklen_t *)(&len)) != 0) C_return(-1);"
-    "switch (((struct sockaddr*)&ss)->sa_family) {"
-    "case AF_INET: C_return(ntohs(((struct sockaddr_in*)&ss)->sin_port));"
-    "case AF_INET6: C_return(ntohs(((struct sockaddr_in6*)&ss)->sin6_port));"
-    "default: C_return(-1); }"))
-
-(define ##net#getpeerport
- (foreign-lambda* int ((int s))
-   "struct sockaddr_storage ss;"
-   "int len = sizeof(ss);"
-   "if(getpeername(s, (struct sockaddr *)&ss, (socklen_t *)(&len)) != 0) C_return(-1);"
-    "switch (((struct sockaddr*)&ss)->sa_family) {"
-    "case AF_INET: C_return(ntohs(((struct sockaddr_in*)&ss)->sin_port));"
-    "case AF_INET6: C_return(ntohs(((struct sockaddr_in6*)&ss)->sin6_port));"
-    "default: C_return(-1); }"))
-
-(define ##net#getpeername 
-  (foreign-lambda* c-string ((int s))
-    "struct sockaddr_storage ss;"
-    "char ip[NI_MAXHOST];"
-    "int len = sizeof(ss);"
-    "if(getpeername(s, (struct sockaddr *)&ss, ((socklen_t *)&len)) != 0) C_return(NULL);"
-    "if(getnameinfo((struct sockaddr *)&ss, len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST)) C_return(NULL);"
-    "C_return(ip);") )
 
 (define-inline (network-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))
@@ -411,37 +375,24 @@ EOF
 (define (tcp-addresses p)
   (##sys#check-port p 'tcp-addresses)
   (let ((fd (##sys#tcp-port->fileno p)))
-    (values 
-     (or (##net#getsockname fd)
-	 (##sys#signal-hook 
-	  #:network-error 'tcp-addresses
-	  (##sys#string-append "cannot compute local address - " strerror) p) )
-     (or (##net#getpeername fd)
-	 (##sys#signal-hook
-	  #:network-error 'tcp-addresses
-	  (##sys#string-append "cannot compute remote address - " strerror) p) ) ) ) )
+    (let ((so (make-socket fd 0 0 0)))   ;; temporary -- until we get socket associated w/ port
+      (values
+       (socket-address (socket-name so))
+       (socket-address (socket-peer-name so))))))
 
 (define (tcp-port-numbers p)
   (##sys#check-port p 'tcp-port-numbers)
   (let ((fd (##sys#tcp-port->fileno p)))
-    (values
-     (or (##net#getsockport fd)
-	 (##sys#signal-hook 
-	  #:network-error 'tcp-port-numbers
-	  (##sys#string-append "cannot compute local port - " strerror) p) )
-     (or (##net#getpeerport fd)
-	 (##sys#signal-hook
-	  #:network-error 'tcp-port-numbers
-	  (##sys#string-append "cannot compute remote port - " strerror) p) ) ) ) )
+    (let ((so (make-socket fd 0 0 0)))
+      (values
+       (socket-port (socket-name so))
+       (socket-port (socket-peer-name so))))))
 
 (define (tcp-listener-port tcpl)
-  (let* ((fd (tcp-listener-fileno tcpl))
-	 (port (##net#getsockport fd)) )
-    (when (eq? -1 port)
-      (##sys#signal-hook
-       #:network-error 'tcp-listener-port (##sys#string-append "cannot obtain listener port - " strerror) 
-       tcpl fd) )
-    port) )
+  (let ((fd (tcp-listener-fileno tcpl)))
+    (let ((so (make-socket fd 0 0 0)))
+      (socket-port (socket-name so)))
+    port))
 
 (define (tcp-abandon-port p)
   (##sys#check-port p 'tcp-abandon-port)
