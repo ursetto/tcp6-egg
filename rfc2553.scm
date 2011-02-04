@@ -59,6 +59,8 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 #define EHOSTUNREACH WSAEHOSTUNREACH
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #define EINPROGRESS WSAEINPROGRESS
+/* Note that it may be possible to replace all references to errno/GetLastError() with
+   a getsockopt(SO_ERROR). */
 #define errno (WSAGetLastError())
 
 char *skt_strerror(int err) {
@@ -424,9 +426,13 @@ char *skt_strerror(int err) {
 
 (define _make_socket_nonblocking
   (foreign-lambda* bool ((int fd))
+    "#ifdef _WIN32\n"
+    "unsigned long val = 1; C_return(ioctlsocket(fd, FIONBIO, &val) == 0);\n"
+    "#else\n"
     "int val = fcntl(fd, F_GETFL, 0);"
     "if(val == -1) C_return(0);"
-    "C_return(fcntl(fd, F_SETFL, val | O_NONBLOCK) != -1);"))
+    "C_return(fcntl(fd, F_SETFL, val | O_NONBLOCK) != -1);\n"
+    "#endif\n"))
 
 (define select-for-read
   (foreign-lambda* int ((int fd))
@@ -452,6 +458,19 @@ char *skt_strerror(int err) {
      if(rv > 0) { rv = FD_ISSET(fd, &out) ? 1 : 0; }
      C_return(rv);") )
 
+;; On Windows, non-blocking connection errors show up in except fds.
+(define select-for-write-or-except
+  (foreign-lambda* int ((int fd))
+    "fd_set out, exc;
+     struct timeval tm;
+     int rv;
+     FD_ZERO(&out); FD_ZERO(&exc);
+     FD_SET(fd, &out); FD_SET(fd, &exc);
+     tm.tv_sec = tm.tv_usec = 0;
+     rv = select(fd + 1, NULL, &out, &exc, &tm);
+     if(rv > 0) { rv = (FD_ISSET(fd, &out) || FD_ISSET(fd, &exc)) ? 1 : 0; }
+     C_return(rv);") )
+
 (define-inline (network-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))
 (define-inline (network-error/errno where msg . args)
@@ -465,8 +484,13 @@ char *skt_strerror(int err) {
   (apply ##sys#signal-hook #:network-error where
          (string-append msg " - " (strerror err))
          args))
+(define-inline (socket-timeout-error where timeout so)
+  (##sys#signal-hook
+   #:network-timeout-error
+   where "operation timed out" timeout so))
 
 (define (block-for-timeout! where timeout fd type #!optional cleanup)  ;; #f permitted for WHERE
+  ;; No exported way to simultaneously wait on either an FD or a timeout event.
   (when timeout
     (##sys#thread-block-for-timeout!
      ##sys#current-thread
@@ -569,6 +593,38 @@ char *skt_strerror(int err) {
 (define nonfatal-connect-exception?
   (condition-property-accessor 'net 'nonfatal #f))
 
+(use srfi-18)
+
+;; stolen from sql-de-lite (itself stolen from sqlite)
+(define busy-timeout
+  (let* ((delays '#(1 2 5 10 15 20 25 25  25  50  50 100))
+         (totals '#(0 1 3  8 18 33 53 78 103 128 178 228))
+         (ndelay (vector-length delays)))
+    (lambda (ms)
+      (cond
+       ((< ms 0) (error 'busy-timeout "timeout must be non-negative" ms))
+       ((= ms 0) #f)
+       (else
+        (let ((end (+ (current-milliseconds) ms)))
+          (lambda (so count)
+            (if (>= (current-milliseconds) end)
+                #f
+                (let* ((delay (vector-ref delays (min count (- ndelay 1))))
+                       (prior (if (< count ndelay)
+                                  (vector-ref totals count)
+                                  (+ (vector-ref totals (- ndelay 1))
+                                     (* delay (- count (- ndelay 1)))))))
+                  (let ((delay (if (> (+ prior delay) ms)
+                                   (- ms prior)
+                                   delay)))
+                    (cond ((<= delay 0) #f)
+                          (else
+                           (thread-sleep! (/ delay 1000)) ;; silly division
+                           (thread-sleep! 0.050) ;; tmp
+                           #t))))))))))))
+
+(define-constant +largest-fixnum+ (##sys#fudge 21)) 
+
 ;; Returns a special "nonfatal" error if connection failure was due to refusal,
 ;; network down, etc.; in which case, another address could be tried.  (The socket
 ;; is still closed, though.)
@@ -583,24 +639,42 @@ char *skt_strerror(int err) {
       (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
       (let ((err errno))
-        (if (eq? err _einprogress)
-            (let loop ()
-              (let ((f (select-for-write s)))
-                (when (eq? f -1)
-                  (network-error/errno 'socket-connect! "select failed" so))
-                (unless (eq? f 1)
-                  (block-for-timeout! 'socket-connect! timeout s #:all
-                                      (lambda () (_close_socket s))) ;; close socket (abort) on timeout
-                  (loop))
-                (cond ((get-socket-error s)
-                       => (lambda (err)
-                            (print "in progress socket error")
-                            (_close_socket s)
-                            ((if (refused? err)
-                                 nonfatal-connect-error/errno*
-                                 network-error/errno*)
-                             'socket-connect! err "cannot initiate connection - "
-                             so saddr))))))
+        (if (or (eq? err _einprogress)
+                (eq? err _ewouldblock))
+            (begin
+              (cond-expand
+               (windows   ;; WINSOCK--connect failure returned in exceptfds; manually schedule
+                (let ((wait (busy-timeout (or timeout +largest-fixnum+)))) ;; largest
+                  (let loop ((n 0))
+                    (print "selecting write/except, try " n)
+                    (let ((f (select-for-write-or-except s)))
+                      (print "selected " f)
+                      (cond ((eq? f -1)
+                             (network-error/errno 'socket-connect! "select failed" so))
+                            ((eq? f 0)
+                             (if (wait so n)
+                                 (loop (+ n 1))
+                                 (socket-timeout-error 'socket-connect! timeout so)))
+                            ;; else f=1, fall through
+                            )))))
+               (else  ;; POSIX--connect failure returned in writefds
+                (let ((f (select-for-write s)))  ;; May be ready immediately; don't reschedule.
+                  (cond ((eq? f -1)
+                         (network-error/errno 'socket-connect! "select failed" so))
+                        ((eq? f 0)
+                         (block-for-timeout! 'socket-connect! timeout s #:output
+                                             (lambda () (_close_socket s))))
+                        ;; else f=1, fall through
+                        ))))
+              (cond ((get-socket-error s)
+                     => (lambda (err)
+                          (print "in progress socket error")
+                          (_close_socket s)
+                          ((if (refused? err)
+                               nonfatal-connect-error/errno*
+                               network-error/errno*)
+                           'socket-connect! err "cannot initiate connection"
+                           so saddr)))))
             (begin
               (_close_socket s)
               ((if (refused? err)
