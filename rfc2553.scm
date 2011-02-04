@@ -595,33 +595,28 @@ char *skt_strerror(int err) {
 
 (use srfi-18)
 
-;; stolen from sql-de-lite (itself stolen from sqlite)
+;; Stolen from sql-de-lite (itself stolen from sqlite), but modified to respect
+;; actual elapsed time instead of estimated elapsed time (to mostly avoid scheduling jitter).
+;; The polling intervals are not altered, only the total elapsed time.
 (define busy-timeout
   (let* ((delays '#(1 2 5 10 15 20 25 25  25  50  50 100))
-         (totals '#(0 1 3  8 18 33 53 78 103 128 178 228))
          (ndelay (vector-length delays)))
     (lambda (ms)
       (cond
        ((< ms 0) (error 'busy-timeout "timeout must be non-negative" ms))
        ((= ms 0) #f)
        (else
-        (let ((end (+ (current-milliseconds) ms)))
+        (let ((start (current-milliseconds)))
           (lambda (so count)
-            (if (>= (current-milliseconds) end)
-                #f
-                (let* ((delay (vector-ref delays (min count (- ndelay 1))))
-                       (prior (if (< count ndelay)
-                                  (vector-ref totals count)
-                                  (+ (vector-ref totals (- ndelay 1))
-                                     (* delay (- count (- ndelay 1)))))))
-                  (let ((delay (if (> (+ prior delay) ms)
-                                   (- ms prior)
-                                   delay)))
-                    (cond ((<= delay 0) #f)
-                          (else
-                           (thread-sleep! (/ delay 1000)) ;; silly division
-                           (thread-sleep! 0.050) ;; tmp
-                           #t))))))))))))
+            (let* ((delay (vector-ref delays (min count (- ndelay 1))))
+                   (prior (- (current-milliseconds) start)))
+              (let ((delay (if (> (+ prior delay) ms)
+                               (- ms prior)
+                               delay)))
+                (cond ((<= delay 0) #f)
+                      (else
+                       (thread-sleep! (/ delay 1000)) ;; silly division
+                       #t)))))))))))
 
 (define-constant +largest-fixnum+ (##sys#fudge 21)) 
 
@@ -644,11 +639,9 @@ char *skt_strerror(int err) {
             (begin
               (cond-expand
                (windows   ;; WINSOCK--connect failure returned in exceptfds; manually schedule
-                (let ((wait (busy-timeout (or timeout +largest-fixnum+)))) ;; largest
+                (let ((wait (busy-timeout (or timeout +largest-fixnum+))))
                   (let loop ((n 0))
-                    (print "selecting write/except, try " n)
                     (let ((f (select-for-write-or-except s)))
-                      (print "selected " f)
                       (cond ((eq? f -1)
                              (network-error/errno 'socket-connect! "select failed" so))
                             ((eq? f 0)
@@ -668,7 +661,6 @@ char *skt_strerror(int err) {
                         ))))
               (cond ((get-socket-error s)
                      => (lambda (err)
-                          (print "in progress socket error")
                           (_close_socket s)
                           ((if (refused? err)
                                nonfatal-connect-error/errno*
