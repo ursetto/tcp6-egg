@@ -377,16 +377,16 @@ EOF
   (let ((fd (##sys#tcp-port->fileno p)))
     (let ((so (make-socket fd 0 0 0)))   ;; temporary -- until we get socket associated w/ port
       (values
-       (socket-address (socket-name so))
-       (socket-address (socket-peer-name so))))))
+       (sockaddr-address (socket-name so))
+       (sockaddr-address (socket-peer-name so))))))
 
 (define (tcp-port-numbers p)
   (##sys#check-port p 'tcp-port-numbers)
   (let ((fd (##sys#tcp-port->fileno p)))
     (let ((so (make-socket fd 0 0 0)))
       (values
-       (socket-port (socket-name so))
-       (socket-port (socket-peer-name so))))))
+       (sockaddr-port (socket-name so))
+       (sockaddr-port (socket-peer-name so))))))
 
 (define (tcp-listener-port tcpl)
   (let ((fd (tcp-listener-fileno tcpl)))
