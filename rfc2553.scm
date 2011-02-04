@@ -24,8 +24,6 @@
 # define socklen_t       int
 static WSADATA wsa;
 # define fcntl(a, b, c)  0
-# define EWOULDBLOCK     0
-# define EINPROGRESS     0
 
 #ifndef SHUT_RD
 # define SHUT_RD SD_RECEIVE
@@ -59,6 +57,17 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 /* May need to test WSAEHOSTDOWN as well */
 #define ENETUNREACH WSAENETUNREACH
 #define EHOSTUNREACH WSAEHOSTUNREACH
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#define EINPROGRESS WSAEINPROGRESS
+#define errno (WSAGetLastError())
+
+char *skt_strerror(int err) {
+    static char msg[1024];
+    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS |
+                  FORMAT_MESSAGE_MAX_WIDTH_MASK, NULL, err,
+                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (char*)msg, 1024, NULL);
+    return msg;
+}
 
 #else
 # include <fcntl.h>
@@ -73,6 +82,7 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 # define INVALID_SOCKET  -1
 # define typecorrect_getsockopt getsockopt
 # define skt_getnameinfo getnameinfo
+# define skt_strerror strerror
 #endif
 
 #ifdef ECOS
@@ -393,7 +403,7 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 ;; WSA* error codes.  Note that non-blocking reads are disabled on Windows;
 ;; perhaps this could be fixed.
 (define-foreign-variable errno int "errno")
-(define-foreign-variable strerrno c-string "strerror(errno)")
+(define-foreign-variable strerrno c-string "skt_strerror(errno)")
 (define-foreign-variable _invalid_socket int "INVALID_SOCKET")
 (define-foreign-variable _ewouldblock int "EWOULDBLOCK")
 (define-foreign-variable _einprogress int "EINPROGRESS")
@@ -410,7 +420,7 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 (define shut/rdwr SHUT_RDWR)
 
 (define _close_socket (foreign-lambda int "closesocket" int))
-(define strerror (foreign-lambda c-string "strerror" int))
+(define strerror (foreign-lambda c-string "skt_strerror" int))
 
 (define _make_socket_nonblocking
   (foreign-lambda* bool ((int fd))
@@ -445,9 +455,15 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 (define-inline (network-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))
 (define-inline (network-error/errno where msg . args)
-  (##sys#update-errno)
+  (let ((err errno))
+    (##sys#update-errno) ;; Note that this may cause context switch, and wipe out errno
+    (apply ##sys#signal-hook #:network-error where
+           (string-append msg " - " (strerror err))
+           args)))
+(define-inline (network-error/errno* where err msg . args)
+;;(##sys#update-errno)
   (apply ##sys#signal-hook #:network-error where
-         (string-append msg " - " strerrno)
+         (string-append msg " - " (strerror err))
          args))
 
 (define (block-for-timeout! where timeout fd type #!optional cleanup)  ;; #f permitted for WHERE
@@ -535,7 +551,6 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
                            (non-nil (integer->protocol-type protocol) protocol)))
     (make-socket s family socktype protocol)))
 
-
 ;; FIXME Terrible name and implementation.  Maybe this should be called a "transient" connect error
 ;; -- i.e. one that could be retried
 (define (nonfatal-connect-error where msg . args)
@@ -546,9 +561,9 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
     (make-property-condition 'net 'nonfatal #t))))
 
 ;; note: consider including errno
-(define-inline (nonfatal-connect-error/errno where msg . args)
-  (##sys#update-errno)
-  (apply nonfatal-connect-error where (string-append msg " - " strerrno)
+(define-inline (nonfatal-connect-error/errno* where err msg . args)
+;;(##sys#update-errno)
+  (apply nonfatal-connect-error where (string-append msg " - " (strerror err))
          args))
 
 (define nonfatal-connect-exception?
@@ -567,30 +582,31 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
     (unless (_make_socket_nonblocking s)
       (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
-      (if (eq? errno _einprogress)
-          (let loop ()
-            (let ((f (select-for-write s)))
-              (when (eq? f -1)
-                (network-error/errno 'socket-connect! "select failed" so))
-              (unless (eq? f 1)
-                (block-for-timeout! 'socket-connect! timeout s #:all
-                                    (lambda () (_close_socket s))) ;; close socket (abort) on timeout
-                (loop))
-              (cond ((get-socket-error s)
-                     => (lambda (err)
-                          (_close_socket s)
-                          ((if (refused? err)
-                               nonfatal-connect-error
-                               network-error)
-                           'socket-connect! (string-append "cannot initiate connection - "
-                                                           (strerror err))
-                           so saddr))))))
-          (begin
-            (_close_socket s) ;; Note: may update errno.
-            ((if (refused? errno)
-                nonfatal-connect-error/errno
-                network-error/errno)
-              'socket-connect! "cannot initiate connection" so saddr))))
+      (let ((err errno))
+        (if (eq? err _einprogress)
+            (let loop ()
+              (let ((f (select-for-write s)))
+                (when (eq? f -1)
+                  (network-error/errno 'socket-connect! "select failed" so))
+                (unless (eq? f 1)
+                  (block-for-timeout! 'socket-connect! timeout s #:all
+                                      (lambda () (_close_socket s))) ;; close socket (abort) on timeout
+                  (loop))
+                (cond ((get-socket-error s)
+                       => (lambda (err)
+                            (print "in progress socket error")
+                            (_close_socket s)
+                            ((if (refused? err)
+                                 nonfatal-connect-error/errno*
+                                 network-error/errno*)
+                             'socket-connect! err "cannot initiate connection - "
+                             so saddr))))))
+            (begin
+              (_close_socket s)
+              ((if (refused? err)
+                   nonfatal-connect-error/errno*
+                   network-error/errno*)
+               'socket-connect! err "cannot initiate connection" so saddr)))))
     ;; perhaps socket address should be stored in socket object
     (void)))
 
