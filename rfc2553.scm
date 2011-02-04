@@ -39,6 +39,21 @@ static WSADATA wsa;
 
 # define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\\
     getsockopt(socket, level, optname, (char *)optval, optlen)
+
+/* On Windows < Vista, getnameinfo is broken, erroring out if it cannot resolve the
+   service to a name.  Try to detect this case and rerun the call with NUMERICSERV set
+   to avoid the error.  Note: we should check Windows version but do not. */
+int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *node,
+  DWORD nodelen, char *service, DWORD servicelen, int flags) {
+    int rc = getnameinfo(sa,salen,node,nodelen,service,servicelen,flags);
+    int err = WSAGetLastError();      /* rc *might* not be gai error, though it should be */
+    if (rc != 0 && !(flags & NI_NUMERICSERV) && err == WSANO_DATA) {
+        rc = getnameinfo(sa,salen,node,nodelen,service,servicelen,flags | NI_NUMERICSERV);
+        err = WSAGetLastError();
+    }
+    return rc ? err : 0;
+}
+
 #else
 # include <fcntl.h>
 # include <sys/types.h>
@@ -51,6 +66,7 @@ static WSADATA wsa;
 # define closesocket     close
 # define INVALID_SOCKET  -1
 # define typecorrect_getsockopt getsockopt
+# define skt_getnameinfo getnameinfo
 #endif
 
 #define ECONNREFUSED WSAECONNREFUSED
@@ -244,7 +260,9 @@ static WSADATA wsa;
 (define freeaddrinfo
   (foreign-lambda void freeaddrinfo ai))
 (define _getnameinfo
-  (foreign-lambda int getnameinfo scheme-pointer int scheme-pointer int scheme-pointer int int))
+  (foreign-lambda int skt_getnameinfo scheme-pointer int scheme-pointer
+                  int scheme-pointer int int))
+
 (define gai_strerror (foreign-lambda c-string "gai_strerror" int))
 
 (define-foreign-variable eai/noname int "EAI_NONAME")
