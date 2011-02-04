@@ -54,6 +54,12 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
     return rc ? err : 0;
 }
 
+#define ECONNREFUSED WSAECONNREFUSED
+#define ETIMEDOUT WSAETIMEDOUT
+/* May need to test WSAEHOSTDOWN as well */
+#define ENETUNREACH WSAENETUNREACH
+#define EHOSTUNREACH WSAEHOSTUNREACH
+
 #else
 # include <fcntl.h>
 # include <sys/types.h>
@@ -68,12 +74,6 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 # define typecorrect_getsockopt getsockopt
 # define skt_getnameinfo getnameinfo
 #endif
-
-#define ECONNREFUSED WSAECONNREFUSED
-#define ETIMEDOUT WSAETIMEDOUT
-/* May need to test WSAEHOSTDOWN as well */
-#define ENETUNREACH WSAENETUNREACH
-#define EHOSTUNREACH WSAEHOSTUNREACH
 
 #ifdef ECOS
 #include <sys/sockio.h>
