@@ -332,7 +332,7 @@ EOF
 		   (when (and outbuf (fx> (##sys#size outbuf) 0))
 		     (output outbuf)
 		     (set! outbuf "") )
-		   (unless (##sys#slot data 2)
+		   (unless (##sys#slot data 2)      ;; #t if abandoned
 		     (socket-shutdown! so shut/wr))
 		   (when iclosed
 		     (socket-close! so))))

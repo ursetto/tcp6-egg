@@ -731,3 +731,34 @@ static WSADATA wsa;
   (if (eq? -1 (_shutdown (socket-fileno so) how))
       (network-error/errno 'socket-shutdown! "unable to shutdown socket" so how)
       (void)))
+
+(define (socket-name so)
+  (define _free (foreign-lambda void "C_free" c-pointer))
+  (let-location ((len int))
+    (let ((sa (_getsockname (socket-fileno so) (location len))))
+      (let ((addr (sa->sockaddr sa len)))
+        (_free sa)
+        addr))))
+
+(define (socket-peer-name so)
+  (define _free (foreign-lambda void "C_free" c-pointer))
+  (let-location ((len int))
+    (let ((sa (_getpeername (socket-fileno so) (location len))))
+      (let ((addr (sa->sockaddr sa len)))
+        (_free sa)
+        addr))))
+
+(define _getsockname
+  (foreign-lambda* c-pointer ((int s) ((c-pointer int) len))
+    "struct sockaddr_storage *ss;"
+    "ss = (struct sockaddr_storage *)C_malloc(sizeof(*ss));"
+    "*len = sizeof(*ss);"
+    "if (getsockname(s, (struct sockaddr *)ss, (socklen_t *)len) != 0) C_return(NULL);"
+    "C_return(ss);"))
+(define _getpeername
+  (foreign-lambda* c-pointer ((int s) ((c-pointer int) len))
+    "struct sockaddr_storage *ss;"
+    "ss = (struct sockaddr_storage *)C_malloc(sizeof(*ss));"
+    "*len = sizeof(*ss);"
+    "if (getpeername(s, (struct sockaddr *)ss, (socklen_t *)len) != 0) C_return(NULL);"
+    "C_return(ss);"))
