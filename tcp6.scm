@@ -1,17 +1,14 @@
-;; tcp-connect should try all addresses.  Either catch socket-connect! exception,
-;; or change socket-connect! to allow multiple addresses.  e.g. (socket-connect! so addr1 addr2)...
 ;; tcp-connect should be allowed to connect to only 1 address (or addrinfo list)
 
 ;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
 ;; tcp-listen accepts service name string
 ;; tcp-connect accepts service name string (may issue SRV request)
+;; tcp-connect connects to multiple addresses (or explicitly with tcp-connect/ai)
 
 ;; creating a 'socket port (slot 7) will allow posixunix to call ##sys#tcp-port->fileno,
 ;; which will bomb
 
-;; getnameinfo fails with WSANO_DATA when provided with an IP sans service port.
-;; Doesn't look like WinXP issues SRV requests; it just fails when trying to
-;; translate a service it doesn't understand, such as ssh.
+;; On XP, you must do 'netsh interface ipv6 install' to activate ipv6.
 
 ;;;; tcp.scm - Networking stuff
 ;

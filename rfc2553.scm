@@ -214,14 +214,25 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
   (c-string ai_canonname ai-canonname)
   ((c-pointer ai) ai_next ai-next))
 
+(define-syntax non-nil
+  (syntax-rules ()
+    ((_ a)
+     (let ((x a))
+       (if (or (not x) (null? x)) #f x)))
+    ((_ a . rest)
+     (let ((x a))
+       (if (or (not x) (null? x))
+           (non-nil . rest)
+           x)))))
+
 (define-record addrinfo
   flags family socktype protocol address canonname)
 (define-record-printer (addrinfo a out)
   (fprintf out "#<addrinfo ~S ~S ~S ~S~A>"
            (sockaddr->string (addrinfo-address a))
-           (integer->address-family (addrinfo-family a))
-           (integer->socket-type (addrinfo-socktype a))
-           (integer->protocol-type (addrinfo-protocol a))
+           (non-nil (integer->address-family (addrinfo-family a)) (addrinfo-family a))
+           (non-nil (integer->socket-type (addrinfo-socktype a)) (addrinfo-socktype a))
+           (non-nil (integer->protocol-type (addrinfo-protocol a)) (addrinfo-protocol a))
            (cond ((addrinfo-canonname a)
                   => (lambda (cn) (sprintf " canonical: ~S" cn)))
                  (else ""))
@@ -501,17 +512,6 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 			  (values host port)))) ;; IPv4 address w/port
 		  (values str #f)) ;; an IPv4 address sans port
 	      )))))
-
-(define-syntax non-nil
-  (syntax-rules ()
-    ((_ a)
-     (let ((x a))
-       (if (or (not x) (null? x)) #f x)))
-    ((_ a . rest)
-     (let ((x a))
-       (if (or (not x) (null? x))
-           (non-nil . rest)
-           x)))))
 
 (define-record socket fileno family type protocol)  ;; NB socket? conflicts with Unit posix
 (define-inline (%socket-fileno so)
