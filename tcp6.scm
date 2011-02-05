@@ -120,8 +120,10 @@
 ;; Returns: I/O ports bound to the succeeding connection, or throws an error
 ;; corresponding to the last failed connection attempt.
 (define (tcp-connect/ai ais)
-  (let ((ais (filter (lambda (ai) (eq? (addrinfo-protocol ai) ipproto/tcp))
-                     ais))) ;; Filter first to preserve our "last exception" model.
+  ;; Filter first to preserve our "last exception" model.  Filter on sock/stream rather
+  ;; than ipproto/tcp because Windows is silly.
+  (let ((ais (filter (lambda (ai) (eq? (addrinfo-socktype ai) sock/stream))
+                     ais))) 
     (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
       ;; FIXME: Set buffer sizes
       (socket-i/o-ports (socket-connect/ai ais)))))
