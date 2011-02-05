@@ -264,7 +264,7 @@
     (unless port
       (set!-values (host port) (parse-inet-address host))
       (unless port (network-error 'tcp-connect "no port specified" host)))
-    (let ((ais (address-information host port protocol: ipproto/tcp)))  ;; or sock/stream?
+    (let ((ais (address-information host port type: sock/stream)))  ;; protocol: problematic on WIN
       (when (null? ais)
 	(network-error 'tcp-connect "node and/or service lookup failed" host port))
       (tcp-connect/ai ais))))

@@ -672,8 +672,12 @@ char *skt_strerror(int err) {
 ;; Returns: fresh socket associated with the succeeding connection, or throws
 ;; an error corresponding to the last failed connection attempt.
 ;; Example: (socket-connect/ai (address-information "localhost" 22 type: sock/stream))
-;; NB: Connection to sock/dgram will generally succeed, so to ensure tcp connection,
-;; make sure to specify sock/stream.
+;; NB: Connection to sock/dgram will generally succeed, so to ensure TCP connection,
+;;     make sure to specify sock/stream.
+;; NB: On Windows XP, a 0 value for socket type will default to TCP (no matter the
+;;     value of protocol).  address-information returns 0 for type and protocol when
+;;     not specified.  For safety, you should always provide "type:" or specify a
+;;     service name (not port).
 (define (socket-connect/ai ais)
   (when (null? ais)
     (network-error 'socket-connect/ai "no addresses to connect to"))
