@@ -100,144 +100,11 @@
 (define tcp-accept-timeout (make-parameter #f))
 (define tcp-bind-ipv6-only (make-parameter #f))
 
-(define ##net#io-ports
-  (let ((tbs tcp-buffer-size))
-    (lambda (so)
-      (let* ((fd (socket-fileno so))
-	     (buf (make-string +input-buffer-size+))
-	     (data (vector fd #f #f buf 0))
-	     (buflen 0)
-	     (bufindex 0)
-	     (iclosed #f) 
-	     (oclosed #f)
-	     (outbufsize (tbs))
-	     (outbuf (and outbufsize (fx> outbufsize 0) ""))
-	     (tmr (tcp-read-timeout))
-	     (tmw (tcp-write-timeout))
-	     (output-chunk-size (socket-send-size))
-	     (read-input
-	      (lambda ()
-		(let ((n (%socket-receive! so buf 0 +input-buffer-size+ 0 tmr)))
-		  (set! buflen n)
-		  (##sys#setislot data 4 n)
-		  (set! bufindex 0))))
-	     (in
-	      (make-input-port
-	       (lambda ()
-		 (when (fx>= bufindex buflen)
-		   (read-input))
-		 (if (fx>= bufindex buflen)
-		     #!eof
-		     (let ((c (##core#inline "C_subchar" buf bufindex)))
-		       (set! bufindex (fx+ bufindex 1))
-		       c) ) )
-	       (lambda ()
-		 (or (fx< bufindex buflen)
-		     (socket-receive-ready? so)))
-	       (lambda ()
-		 (unless iclosed
-		   (set! iclosed #t)
-		   (unless (##sys#slot data 1)
-		     (socket-shutdown! so shut/rd))
-		   (when oclosed
-		     (socket-close! so))))
-	       (lambda ()
-		 (when (fx>= bufindex buflen)
-		   (read-input))
-		 (if (fx< bufindex buflen)
-		     (##core#inline "C_subchar" buf bufindex)
-		     #!eof))
-	       (lambda (p n dest start)	; read-string!
-		 (let loop ((n n) (m 0) (start start))
-		   (cond ((eq? n 0) m)
-			 ((fx< bufindex buflen)
-			  (let* ((rest (fx- buflen bufindex))
-				 (n2 (if (fx< n rest) n rest)))
-			    (##core#inline "C_substring_copy" buf dest bufindex (fx+ bufindex n2) start)
-			    (set! bufindex (fx+ bufindex n2))
-			    (loop (fx- n n2) (fx+ m n2) (fx+ start n2)) ) )
-			 (else
-			  (read-input)
-			  (if (eq? buflen 0) 
-			      m
-			      (loop n m start) ) ) ) ) )
-	       (lambda (p limit)	; read-line
-		 (let loop ((str #f)
-			    (limit (or limit (##sys#fudge 21))))
-		   (cond ((fx< bufindex buflen)
-			  (##sys#scan-buffer-line
-			   buf 
-			   (fxmin buflen limit)
-			   bufindex
-			   (lambda (pos2 next)
-			     (let* ((len (fx- pos2 bufindex))
-				    (dest (##sys#make-string len)))
-			       (##core#inline "C_substring_copy" buf dest bufindex pos2 0)
-			       (set! bufindex next)
-			       (cond ((eq? pos2 limit) ; no line-terminator, hit limit
-				      (if str (##sys#string-append str dest) dest))
-				     ((eq? pos2 next) ; no line-terminator, hit buflen
-				      (read-input)
-				      (if (fx>= bufindex buflen)
-					  (or str "")
-					  (loop (if str (##sys#string-append str dest) dest)
-						(fx- limit len)) ) )
-				     (else 
-				      (##sys#setislot p 4 (fx+ (##sys#slot p 4) 1))
-				      (if str (##sys#string-append str dest) dest)) ) ) ) ) )
-			 (else
-			  (read-input)
-			  (if (fx< bufindex buflen)
-			      (loop str limit)
-			      #!eof) ) ) ) )
-	       ;; (lambda (p)		; read-buffered
-	       ;;   (if (fx>= bufindex buflen)
-	       ;;       ""
-	       ;;       (let ((str (##sys#substring buf bufpos buflen)))
-	       ;;         (set! bufpos buflen)
-	       ;;         str)))
-	       ) )
-	     (output
-	      (lambda (str)
-		(%socket-send-all! so str 0 (string-length str) 0 tmw output-chunk-size)))
-	     (out
-	      (make-output-port
-	       (if outbuf
-		   (lambda (s)
-		     (set! outbuf (##sys#string-append outbuf s))
-		     (when (fx>= (##sys#size outbuf) outbufsize)
-		       (output outbuf)
-		       (set! outbuf "") ) )
-		   (lambda (s) 
-		     (when (fx> (##sys#size s) 0)
-		       (output s)) ) )
-	       (lambda ()
-		 (unless oclosed
-		   (set! oclosed #t)
-		   (when (and outbuf (fx> (##sys#size outbuf) 0))
-		     (output outbuf)
-		     (set! outbuf "") )
-		   (unless (##sys#slot data 2)      ;; #t if abandoned
-		     (socket-shutdown! so shut/wr))
-		   (when iclosed
-		     (socket-close! so))))
-	       (and outbuf
-		    (lambda ()
-		      (when (fx> (##sys#size outbuf) 0)
-			(output outbuf)
-			(set! outbuf "") ) ) ) ) ) )
-	(##sys#setslot in 3 "(tcp)")
-	(##sys#setslot out 3 "(tcp)")
-	(##sys#setslot in 7 'socket)
-	(##sys#setslot out 7 'socket)
-	(##sys#set-port-data! in data)
-	(##sys#set-port-data! out data)
-	(values in out) ) ) ) )
-
 (define (tcp-accept tcpl)
   (parameterize ((socket-accept-timeout (tcp-accept-timeout)))
     (let ((so (socket-accept (tcp-listener-socket tcpl))))
-      (##net#io-ports so))))
+      ;; FIXME: Set buffer sizes
+      (socket-i/o-ports so))))
 
 (define (tcp-accept-ready? tcpl)
   (socket-accept-ready? (tcp-listener-socket tcpl)))
@@ -256,7 +123,8 @@
   (let ((ais (filter (lambda (ai) (eq? (addrinfo-protocol ai) ipproto/tcp))
                      ais))) ;; Filter first to preserve our "last exception" model.
     (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
-      (##net#io-ports (socket-connect/ai ais)))))
+      ;; FIXME: Set buffer sizes
+      (socket-i/o-ports (socket-connect/ai ais)))))
 
 (define (tcp-connect host . more)
   (let ((port (optional more #f)))

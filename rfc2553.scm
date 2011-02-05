@@ -1,7 +1,8 @@
 ;; UNIX sockets not supported because they do not exist on Windows (though we could test for this)
 
 ;; socket-accept should perhaps return connected peer address
-;; not all errors close the socket (probably should) -- e.g., recv failure, send failure
+;; not all errors close the socket (probably should) -- e.g., recv failure, send failure;
+;;     however, on a timeout, ports require that the socket stay open
 ;; implement socket-receive
 
 (use foreigners)
@@ -60,6 +61,7 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 #define EHOSTUNREACH WSAEHOSTUNREACH
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #define EINPROGRESS WSAEINPROGRESS
+#define ENOTCONN WSAENOTCONN
 /* Note that it may be possible to replace all references to errno/GetLastError() with
    a getsockopt(SO_ERROR). */
 #define errno (WSAGetLastError())
@@ -411,6 +413,7 @@ char *skt_strerror(int err) {
 (define-foreign-variable _etimedout int "ETIMEDOUT")
 (define-foreign-variable _enetunreach int "ENETUNREACH")
 (define-foreign-variable _ehostunreach int "EHOSTUNREACH")
+(define-foreign-variable _enotconn int "ENOTCONN")
 
 (define-foreign-variable SHUT_RD int "SHUT_RD")
 (define-foreign-variable SHUT_WR int "SHUT_WR")
@@ -826,7 +829,10 @@ char *skt_strerror(int err) {
 ;; If #f, attempt to send as much as possible.  Only question is whether it is safe to exceed
 ;; the socket send buffer size, which may (according to Microsoft pages) cause stalling until
 ;; delayed ACKs come back.
-(define socket-send-size (make-parameter 16384)) 
+(define socket-send-size (make-parameter 16384))
+(define socket-send-buffer-size (make-parameter #f))
+;;(define socket-receive-size (make-parameter 1024))      ;;?
+(define socket-receive-buffer-size (make-parameter 4096))
 
 (define (socket-send-all! so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
@@ -846,11 +852,15 @@ char *skt_strerror(int err) {
                        (socket-write-timeout)
                        (socket-send-size))))
 
+;; Shutdown socket.  If socket is not connected, silently ignore the error, because
+;; the peer may have already initiated shutdown.  That behavior should perhaps be configurable.
 (define (socket-shutdown! so how)  ;; how: shut/rd, shut/wr, shut/rdwr
   (define _shutdown (foreign-lambda int "shutdown" int int))
-  (if (eq? -1 (_shutdown (socket-fileno so) how))
-      (network-error/errno 'socket-shutdown! "unable to shutdown socket" so how)
-      (void)))
+  (when (eq? -1 (_shutdown (socket-fileno so) how))
+    (let ((err errno))
+      (unless (eq? err _enotconn)
+        (network-error/errno* 'socket-shutdown! err "unable to shutdown socket" so how))))
+  (void))
 
 (define (socket-name so)   ;; a legacy name
   (define _free (foreign-lambda void "C_free" c-pointer))
@@ -911,3 +921,141 @@ char *skt_strerror(int err) {
                    "#endif\n")
                  s (tcp-bind-ipv6-only)))
     (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
+
+;;; ports
+
+(define socket-i/o-ports
+    (lambda (so)
+      (let* ((fd (socket-fileno so))
+             (input-buffer-size (socket-receive-buffer-size))
+	     (buf (make-string input-buffer-size))
+	     (data (vector fd #f #f buf 0))
+	     (buflen 0)
+	     (bufindex 0)
+	     (iclosed #f) 
+	     (oclosed #f)
+	     (outbufsize (socket-send-buffer-size))
+	     (outbuf (and outbufsize (fx> outbufsize 0) ""))
+	     (tmr (socket-read-timeout))
+	     (tmw (socket-write-timeout))
+	     (output-chunk-size (socket-send-size))
+	     (read-input
+	      (lambda ()
+		(let ((n (%socket-receive! so buf 0 input-buffer-size 0 tmr)))
+		  (set! buflen n)
+		  (##sys#setislot data 4 n)
+		  (set! bufindex 0))))
+	     (in
+	      (make-input-port
+	       (lambda ()
+		 (when (fx>= bufindex buflen)
+		   (read-input))
+		 (if (fx>= bufindex buflen)
+		     #!eof
+		     (let ((c (##core#inline "C_subchar" buf bufindex)))
+		       (set! bufindex (fx+ bufindex 1))
+		       c) ) )
+	       (lambda ()
+		 (or (fx< bufindex buflen)
+		     (socket-receive-ready? so)))
+	       (lambda ()
+		 (unless iclosed
+		   (set! iclosed #t)
+		   (unless (##sys#slot data 1)
+		     (socket-shutdown! so shut/rd))  ;; Must not error if peer has shutdown.
+		   (when oclosed
+		     (socket-close! so))))
+	       (lambda ()
+		 (when (fx>= bufindex buflen)
+		   (read-input))
+		 (if (fx< bufindex buflen)
+		     (##core#inline "C_subchar" buf bufindex)
+		     #!eof))
+	       (lambda (p n dest start)	; read-string!
+		 (let loop ((n n) (m 0) (start start))
+		   (cond ((eq? n 0) m)
+			 ((fx< bufindex buflen)
+			  (let* ((rest (fx- buflen bufindex))
+				 (n2 (if (fx< n rest) n rest)))
+			    (##core#inline "C_substring_copy" buf dest bufindex (fx+ bufindex n2) start)
+			    (set! bufindex (fx+ bufindex n2))
+			    (loop (fx- n n2) (fx+ m n2) (fx+ start n2)) ) )
+			 (else
+			  (read-input)
+			  (if (eq? buflen 0) 
+			      m
+			      (loop n m start) ) ) ) ) )
+	       (lambda (p limit)	; read-line
+		 (let loop ((str #f)
+			    (limit (or limit (##sys#fudge 21))))
+		   (cond ((fx< bufindex buflen)
+			  (##sys#scan-buffer-line
+			   buf 
+			   (fxmin buflen limit)
+			   bufindex
+			   (lambda (pos2 next)
+			     (let* ((len (fx- pos2 bufindex))
+				    (dest (##sys#make-string len)))
+			       (##core#inline "C_substring_copy" buf dest bufindex pos2 0)
+			       (set! bufindex next)
+			       (cond ((eq? pos2 limit) ; no line-terminator, hit limit
+				      (if str (##sys#string-append str dest) dest))
+				     ((eq? pos2 next) ; no line-terminator, hit buflen
+				      (read-input)
+				      (if (fx>= bufindex buflen)
+					  (or str "")
+					  (loop (if str (##sys#string-append str dest) dest)
+						(fx- limit len)) ) )
+				     (else 
+				      (##sys#setislot p 4 (fx+ (##sys#slot p 4) 1))
+				      (if str (##sys#string-append str dest) dest)) ) ) ) ) )
+			 (else
+			  (read-input)
+			  (if (fx< bufindex buflen)
+			      (loop str limit)
+			      #!eof) ) ) ) )
+	       ;; (lambda (p)		; read-buffered
+	       ;;   (if (fx>= bufindex buflen)
+	       ;;       ""
+	       ;;       (let ((str (##sys#substring buf bufpos buflen)))
+	       ;;         (set! bufpos buflen)
+	       ;;         str)))
+	       ) )
+	     (output
+	      (lambda (str)
+		(%socket-send-all! so str 0 (string-length str) 0 tmw output-chunk-size)))
+	     (out
+	      (make-output-port
+	       (if outbuf
+		   (lambda (s)
+		     (set! outbuf (##sys#string-append outbuf s))
+		     (when (fx>= (##sys#size outbuf) outbufsize)
+		       (output outbuf)
+		       (set! outbuf "") ) )
+		   (lambda (s) 
+		     (when (fx> (##sys#size s) 0)
+		       (output s)) ) )
+	       (lambda ()
+		 (unless oclosed
+		   (set! oclosed #t)
+		   (when (and outbuf (fx> (##sys#size outbuf) 0))
+		     (output outbuf)
+		     (set! outbuf "") )
+                   ;; Note some odd closesocket() behavior with discarded output at:
+                   ;; http://msdn.microsoft.com/en-us/library/ms738547 (v=vs.85).aspx
+		   (unless (##sys#slot data 2)      ;; #t if abandoned
+		     (socket-shutdown! so shut/wr))
+		   (when iclosed
+		     (socket-close! so))))
+	       (and outbuf
+		    (lambda ()
+		      (when (fx> (##sys#size outbuf) 0)
+			(output outbuf)
+			(set! outbuf "") ) ) ) ) ) )
+	(##sys#setslot in 3 "(socket)")
+	(##sys#setslot out 3 "(socket)")
+	(##sys#setslot in 7 'socket6)
+	(##sys#setslot out 7 'socket6)
+	(##sys#set-port-data! in data)
+	(##sys#set-port-data! out data)
+	(values in out) ) ) ) 
