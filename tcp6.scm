@@ -44,77 +44,13 @@
   ;; (export tcp-close tcp-listen tcp-connect tcp-connect/ai tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
   ;;         tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size tcp-listener-socket
   ;;         tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout)
-  (foreign-declare #<<EOF
-#include <errno.h>
-#ifdef _WIN32
-# if (defined(HAVE_WINSOCK2_H) && defined(HAVE_WS2TCPIP_H))
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
-# else
-#  include <winsock.h>
-# endif
-/* Beware: winsock2.h must come BEFORE windows.h */
-# define socklen_t       int
-static WSADATA wsa;
-# define fcntl(a, b, c)  0
-# define EWOULDBLOCK     0
-# define EINPROGRESS     0
-# define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\
-    getsockopt(socket, level, optname, (char *)optval, optlen)
-#else
-# include <fcntl.h>
-# include <sys/types.h>
-# include <sys/socket.h>
-# include <sys/time.h>
-# include <netinet/in.h>
-# include <unistd.h>
-# include <netdb.h>
-# include <signal.h>
-# define closesocket     close
-# define INVALID_SOCKET  -1
-# define typecorrect_getsockopt getsockopt
-#endif
-
-#ifndef SD_RECEIVE
-# define SD_RECEIVE      0
-# define SD_SEND         1
-#endif
-
-#ifdef ECOS
-#include <sys/sockio.h>
-#endif
-
-#ifndef h_addr
-# define h_addr  h_addr_list[ 0 ]
-#endif
-
-static char addr_buffer[ 20 ];
-EOF
-) 
 
 ;;(include "common-declarations.scm")
 
 ;; (register-feature! 'tcp)
 
-(define-foreign-variable errno int "errno")
-(define-foreign-variable strerror c-string "strerror(errno)")
-
-(define-foreign-type sockaddr* (pointer "struct sockaddr"))
-(define-foreign-type sockaddr_in* (pointer "struct sockaddr_in"))
-
-(define-foreign-variable _af_inet int "AF_INET")
-(define-foreign-variable _sock_stream int "SOCK_STREAM")
-(define-foreign-variable _sock_dgram int "SOCK_DGRAM")
-(define-foreign-variable _sockaddr_size int "sizeof(struct sockaddr)")
-(define-foreign-variable _sockaddr_in_size int "sizeof(struct sockaddr_in)")
-
-(define-inline (network-error where msg . args)
+(define-inline (tcp-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))
-(define-inline (network-error/errno where msg . args)
-  (##sys#update-errno)
-  (apply ##sys#signal-hook #:network-error where
-         (string-append msg " - " strerrno)
-         args))
 
 ;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
 ;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
@@ -125,28 +61,16 @@ EOF
 	 (ai (address-information host service: port family: family
 				  socktype: sock/stream flags: ai/passive)))
     (when (null? ai)
-      (network-error 'tcp-listen "node or service lookup failed" host port))
+      (tcp-error 'tcp-listen "node or service lookup failed" host port))
     (let* ((ai (car ai))
 	   (addr (addrinfo-address ai)))
     (let* ((so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
 	   (s (socket-fileno so)))
-    ;; PLT makes this an optional arg to tcp-listen. Should we as well?
-     (when (eq? -1 ((foreign-lambda* int ((int socket)) 
-		      "int yes = 1; 
-                      C_return(setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(int)));") 
-		    s) )
-       (network-error/errno 'tcp-listen "error setting SO_REUSEADDR" so))
-     (when (= (addrinfo-family ai) af/inet6)
-       (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag))
-			"#ifdef IPV6_V6ONLY\n"
-			"C_return(setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&flag, sizeof(flag)));\n"
-			"#else\n"
-			"C_return(0);\n" ;; silently fail
-			"#endif\n")
-		      s (tcp-bind-ipv6-only)))
-	 (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
-     (socket-bind! so addr)
-     so))))
+      (set-socket-reuseaddr! so #t)
+      (when (= (addrinfo-family ai) af/inet6)
+        (set-socket-v6only! so (tcp-bind-ipv6-only)))
+      (socket-bind! so addr)
+      so))))
 
 (define-constant default-backlog 10)
 

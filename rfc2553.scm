@@ -866,3 +866,28 @@ char *skt_strerror(int err) {
     "*len = sizeof(*ss);"
     "if (getpeername(s, (struct sockaddr *)ss, (socklen_t *)len) != 0) C_return(NULL);"
     "C_return(ss);"))
+
+
+
+
+
+;;; socket options
+
+;; FIXME: Temporary for tcp6 egg
+(define (set-socket-reuseaddr! so flag)
+  (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag)) 
+                   "flag = flag ? 1 : 0;
+                    C_return(setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&flag, sizeof(flag)));") 
+                 so flag))
+    (network-error/errno 'tcp-listen "error setting SO_REUSEADDR" so)))
+
+(define (set-socket-v6only! so flag)
+  (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag))
+                   "#ifdef IPV6_V6ONLY\n"
+                   "flag = flag ? 1 : 0;"
+                   "C_return(setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&flag, sizeof(flag)));\n"
+                   "#else\n"
+                   "C_return(0);\n" ;; silently fail
+                   "#endif\n")
+                 s (tcp-bind-ipv6-only)))
+    (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
