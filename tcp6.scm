@@ -58,8 +58,8 @@
 (define (bind-tcp-socket port host)
   (let* ((family (if (and (not host) (tcp-bind-ipv6-only))
 		     af/inet #f))
-	 (ai (address-information host service: port family: family
-				  socktype: sock/stream flags: ai/passive)))
+	 (ai (address-information host port family: family
+				  type: sock/stream flags: ai/passive)))
     (when (null? ai)
       (tcp-error 'tcp-listen "node or service lookup failed" host port))
     (let* ((ai (car ai))
@@ -280,7 +280,7 @@
     (unless port
       (set!-values (host port) (parse-inet-address host))
       (unless port (network-error 'tcp-connect "no port specified" host)))
-    (let ((ais (address-information host service: port protocol: ipproto/tcp)))  ;; or sock/stream?
+    (let ((ais (address-information host port protocol: ipproto/tcp)))  ;; or sock/stream?
       (when (null? ais)
 	(network-error 'tcp-connect "node and/or service lookup failed" host port))
       (tcp-connect/ai ais))))

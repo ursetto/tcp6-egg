@@ -318,9 +318,9 @@ char *skt_strerror(int err) {
     (when ai (freeaddrinfo ai))
     addrinfo))
 
-(define (address-information node #!key service family socktype protocol flags)
+(define (address-information node service #!key family type protocol flags)
   (let ((service (if (integer? service) (number->string service) service)))
-    (getaddrinfo node service family socktype protocol flags)))
+    (getaddrinfo node service family type protocol flags)))
 
 ;; Constructor for socket address object from IP address string & SERVICE number.
 ;; The usual way to create such an address is via address-information; this is
@@ -339,7 +339,7 @@ char *skt_strerror(int err) {
 ;; Note: Perhaps service should be mandatory.
 ;; Note: (car (name-information addr flags: ni/numerichost)) ==
 ;;         (sockaddr-address (inet-sockaddr addr)), so there is some redundancy.
-(define (name-information addr #!key (service #f) (flags 0))
+(define (name-information addr service #!key (flags 0))
   (define (massage ni)
     (cond ((string->number (cdr ni))
            => (lambda (p) (cons (car ni) p)))
