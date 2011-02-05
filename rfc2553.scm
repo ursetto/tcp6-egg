@@ -1,10 +1,8 @@
 ;; UNIX sockets not supported because they do not exist on Windows (though we could test for this)
 
 ;; socket-accept should perhaps return connected peer address
-;; not all errors close the socket (probably should) -- e.g., read failure
+;; not all errors close the socket (probably should) -- e.g., recv failure, send failure
 ;; implement socket-receive
-;; may be worth implementing socket-connect/ai, which would create the first socket,
-;;   and handle transients
 
 (use foreigners)
 (use srfi-4)
@@ -668,6 +666,30 @@ char *skt_strerror(int err) {
     ;; perhaps socket address should be stored in socket object
     (void)))
 
+;; Sequentially connect to all addrinfo objects until one succeeds, as long
+;; as the connection is retryable (e.g. refused, no route, or timeout).
+;; Otherwise it will error out on non-recoverable errors.
+;; Returns: fresh socket associated with the succeeding connection, or throws
+;; an error corresponding to the last failed connection attempt.
+;; Example: (socket-connect/ai (address-information "localhost" 22 type: sock/stream))
+;; NB: Connection to sock/dgram will generally succeed, so to ensure tcp connection,
+;; make sure to specify sock/stream.
+(define (socket-connect/ai ais)
+  (when (null? ais)
+    (network-error 'socket-connect/ai "no addresses to connect to"))
+  (let loop ((ais ais))
+    (let* ((ai (car ais))
+           (addr (addrinfo-address ai))
+           (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
+           (s (socket-fileno so)))
+      (if (null? (cdr ais))
+          (begin (socket-connect! so addr) so)
+          (condition-case
+           (begin (socket-connect! so addr) so)
+           (e (exn i/o net timeout)
+              (loop (cdr ais)))
+           (e (exn i/o net transient)
+              (loop (cdr ais))))))))
 
 ;; (socket-bind! s (addrinfo-address (car (address-information "127.0.0.1" service: 9112 socktype: sock/stream flags: ai/passive))))
 ;; ... is verbose; perhaps could be streamlined.
