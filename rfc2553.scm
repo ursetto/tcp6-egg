@@ -1,7 +1,8 @@
 ;; UNIX sockets not supported because they do not exist on Windows (though we could test for this)
 
 ;; socket-accept should perhaps return connected peer address
-;; not all errors close the socket (probably should)
+;; not all errors close the socket (probably should) -- e.g., read failure
+;; implement socket-receive
 
 (use foreigners)
 (use srfi-4)
@@ -401,9 +402,6 @@ char *skt_strerror(int err) {
   (set! socket-connect-timeout (make-parameter #f (check 'socket-connect-timeout))) 
   (set! socket-accept-timeout (make-parameter #f (check 'socket-accept-timeout))) )
 
-;; Socket errors under windows probably require the use of WSAGetLastError &
-;; WSA* error codes.  Note that non-blocking reads are disabled on Windows;
-;; perhaps this could be fixed.
 (define-foreign-variable errno int "errno")
 (define-foreign-variable strerrno c-string "skt_strerror(errno)")
 (define-foreign-variable _invalid_socket int "INVALID_SOCKET")
@@ -639,7 +637,7 @@ char *skt_strerror(int err) {
             (begin
               (cond-expand
                (windows   ;; WINSOCK--connect failure returned in exceptfds; manually schedule
-                (let ((wait (busy-timeout (or timeout +largest-fixnum+))))
+                (let ((wait (busy-timeout (or timeout +largest-fixnum+)))) ;; 12.4 days on 32bit
                   (let loop ((n 0))
                     (let ((f (select-for-write-or-except s)))
                       (cond ((eq? f -1)
@@ -746,11 +744,12 @@ char *skt_strerror(int err) {
     (let restart ()
       (let ((n (_recv_offset s buf start len flags)))
         (cond ((eq? -1 n)
-               (cond ((eq? errno _ewouldblock)
-                      (block-for-timeout! 'socket-receive! timeout s #:input)
-                      (restart))
-                     (else
-                      (network-error/errno 'socket-receive! "cannot read from socket" so))))
+               (let ((err errno))
+                 (cond ((eq? err _ewouldblock)
+                        (block-for-timeout! 'socket-receive! timeout s #:input)
+                        (restart))
+                       (else
+                        (network-error/errno* 'socket-receive! err "cannot read from socket" so)))))
               (else n))))))
 
 (define (socket-receive-ready? so)
@@ -783,11 +782,12 @@ char *skt_strerror(int err) {
     (let retry ((len len) (start start))
       (let ((n (_send_offset s buf start len flags)))
         (cond ((eq? -1 n)
-               (cond ((eq? errno _ewouldblock)
-                      (block-for-timeout! 'socket-send! timeout s #:output)
-                      (retry len start))
-                     (else
-                      (network-error/errno 'socket-send! "cannot send to socket" so))))
+               (let ((err errno))
+                 (cond ((eq? err _ewouldblock)
+                        (block-for-timeout! 'socket-send! timeout s #:output)
+                        (retry len start))
+                       (else
+                        (network-error/errno* 'socket-send! err "cannot send to socket" so)))))
               (else n))))))
 
 (define-foreign-variable +maximum-string-length+ int "C_HEADER_SIZE_MASK")  ;; horrible
@@ -832,7 +832,7 @@ char *skt_strerror(int err) {
       (network-error/errno 'socket-shutdown! "unable to shutdown socket" so how)
       (void)))
 
-(define (socket-name so)
+(define (socket-name so)   ;; a legacy name
   (define _free (foreign-lambda void "C_free" c-pointer))
   (let-location ((len int))
     (let ((sa (_getsockname (socket-fileno so) (location len))))
