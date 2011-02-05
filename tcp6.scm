@@ -253,26 +253,10 @@
 ;; Returns: I/O ports bound to the succeeding connection, or throws an error
 ;; corresponding to the last failed connection attempt.
 (define (tcp-connect/ai ais)
-  (define (%tcp-connect/ai ais)
-    (let ((ais (filter (lambda (ai) (eq? (addrinfo-protocol ai) ipproto/tcp))
-		       ais)))  ;; Filter first to preserve our "last exception" model.
-      (when (null? ais)
-	(network-error 'tcp-connect/ai "no addresses to connect to"))
-      (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
-	(let loop ((ais ais))
-	  (let* ((ai (car ais))
-		 (addr (addrinfo-address ai))
-		 (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
-		 (s (socket-fileno so)))
-	    (if (null? (cdr ais))
-		(begin (socket-connect! so addr) so)
-		(condition-case
-		 (begin (socket-connect! so addr) so)
-		 (e (exn i/o net timeout)
-		    (loop (cdr ais)))
-		 (e (exn i/o net transient)
-                    (loop (cdr ais))))))))))
-  (##net#io-ports (%tcp-connect/ai ais)))
+  (let ((ais (filter (lambda (ai) (eq? (addrinfo-protocol ai) ipproto/tcp))
+                     ais))) ;; Filter first to preserve our "last exception" model.
+    (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
+      (##net#io-ports (socket-connect/ai ais)))))
 
 (define (tcp-connect host . more)
   (let ((port (optional more #f)))
