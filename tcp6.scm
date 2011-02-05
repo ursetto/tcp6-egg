@@ -270,10 +270,8 @@
 		 (begin (socket-connect! so addr) so)
 		 (e (exn i/o net timeout)
 		    (loop (cdr ais)))
-		 (e (exn i/o net)
-		    (if (nonfatal-connect-exception? e)
-			(loop (cdr ais))
-			(signal e))))))))))
+		 (e (exn i/o net transient)
+                    (loop (cdr ais))))))))))
   (##net#io-ports (%tcp-connect/ai ais)))
 
 (define (tcp-connect host . more)

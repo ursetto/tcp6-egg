@@ -3,6 +3,8 @@
 ;; socket-accept should perhaps return connected peer address
 ;; not all errors close the socket (probably should) -- e.g., read failure
 ;; implement socket-receive
+;; may be worth implementing socket-connect/ai, which would create the first socket,
+;;   and handle transients
 
 (use foreigners)
 (use srfi-4)
@@ -573,23 +575,15 @@ char *skt_strerror(int err) {
                            (non-nil (integer->protocol-type protocol) protocol)))
     (make-socket s family socktype protocol)))
 
-;; FIXME Terrible name and implementation.  Maybe this should be called a "transient" connect error
-;; -- i.e. one that could be retried
-(define (nonfatal-connect-error where msg . args)
+(define-inline (transient-network-error/errno* where err msg . args)
   (abort
    (make-composite-condition
-    (make-property-condition 'exn 'location where 'message msg 'arguments args)
+    (make-property-condition 'exn 'location where
+                              'message (string-append msg " - " (strerror err))
+                             'arguments args)
     (make-property-condition 'i/o)
-    (make-property-condition 'net 'nonfatal #t))))
-
-;; note: consider including errno
-(define-inline (nonfatal-connect-error/errno* where err msg . args)
-;;(##sys#update-errno)
-  (apply nonfatal-connect-error where (string-append msg " - " (strerror err))
-         args))
-
-(define nonfatal-connect-exception?
-  (condition-property-accessor 'net 'nonfatal #f))
+    (make-property-condition 'net 'errno err)
+    (make-property-condition 'transient))))
 
 (use srfi-18)
 
@@ -618,9 +612,9 @@ char *skt_strerror(int err) {
 
 (define-constant +largest-fixnum+ (##sys#fudge 21)) 
 
-;; Returns a special "nonfatal" error if connection failure was due to refusal,
-;; network down, etc.; in which case, another address could be tried.  (The socket
-;; is still closed, though.)
+;; Returns a special "transient" error (exn i/o net transient) if connection failure
+;; was due to refusal, network down, etc.; in which case, the same or another
+;; address could be tried later. (The socket is still closed, though.)
 (define (socket-connect! so saddr)
   (define _connect (foreign-lambda int "connect" int scheme-pointer int))
   (define (refused? err)
@@ -661,14 +655,14 @@ char *skt_strerror(int err) {
                      => (lambda (err)
                           (_close_socket s)
                           ((if (refused? err)
-                               nonfatal-connect-error/errno*
+                               transient-network-error/errno*
                                network-error/errno*)
                            'socket-connect! err "cannot initiate connection"
                            so saddr)))))
             (begin
               (_close_socket s)
               ((if (refused? err)
-                   nonfatal-connect-error/errno*
+                   transient-network-error/errno*
                    network-error/errno*)
                'socket-connect! err "cannot initiate connection" so saddr)))))
     ;; perhaps socket address should be stored in socket object
