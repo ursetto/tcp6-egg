@@ -935,7 +935,8 @@ char *skt_strerror(int err) {
 	     (iclosed #f) 
 	     (oclosed #f)
 	     (outbufsize (socket-send-buffer-size))
-	     (outbuf (and outbufsize (fx> outbufsize 0) ""))
+	     (outbuf (and outbufsize (fx> outbufsize 0) (make-string outbufsize)))
+	     (outbufindex 0)
 	     (tmr (socket-read-timeout))
 	     (tmw (socket-write-timeout))
 	     (output-chunk-size (socket-send-size))
@@ -1022,8 +1023,8 @@ char *skt_strerror(int err) {
 	       ;;         str)))
 	       ) )
 	     (output
-	      (lambda (str)
-		(%socket-send-all! so str 0 (string-length str) 0 tmw output-chunk-size)))
+	      (lambda (str off len)
+		(%socket-send-all! so str off len 0 tmw output-chunk-size)))
 	     (out
 	      (make-output-port
 	       (if outbuf
@@ -1036,24 +1037,36 @@ char *skt_strerror(int err) {
                      ;; fixed size until an explicit flush.  Of course if you have that requirement
                      ;; I suspect you will need to construct packets/strings yourself to ensure
                      ;; the last one is padded. (?)
-                     (cond ((and (fx= (##sys#size outbuf) 0)
-                                 (fx>= (##sys#size s) outbufsize))
-                            (output s)) ;; empty buf, s >= bufsz
-                           (else
-                            (set! outbuf (##sys#string-append outbuf s))
-                            (when (fx>= (##sys#size outbuf) outbufsize)
-                              (output outbuf)
-                              (set! outbuf ""))  ;; strangely, returns a value when compiled
-                            (void))))
+
+                     ;; Modified from Unit TCP.  No longer does string-appends to build buffer;
+                     ;; instead writes into static buffer until exhausted, with a single
+                     ;; string-append at end if sending more than buffer space.
+                     (let ((olen (+ (##sys#size s) outbufindex)))
+                       (cond ((fx= (##sys#size s) 0))
+                             ((and (fx= outbufindex 0)
+                                   (fx>= (##sys#size s) outbufsize))
+                              (output s 0 (##sys#size s))) ;; empty buf, s >= bufsz
+                             ((< olen outbufsize)
+                              (##core#inline "C_substring_copy" s outbuf 0 (##sys#size s) outbufindex)
+                              (set! outbufindex olen))
+                             ((= olen outbufsize)
+                              (##core#inline "C_substring_copy" s outbuf 0 (##sys#size s) outbufindex)
+                              (output outbuf 0 outbufsize)
+                              (set! outbufindex 0))
+                             (else
+                              (output (##sys#string-append (substring outbuf 0 outbufindex) s)
+                                      0 olen)
+                              (set! outbufindex 0))))
+                     (void))
 		   (lambda (s) 
 		     (when (fx> (##sys#size s) 0)
-		       (output s)) ) )
+		       (output s 0 (##sys#size s))) ) )
 	       (lambda ()
 		 (unless oclosed
 		   (set! oclosed #t)
-		   (when (and outbuf (fx> (##sys#size outbuf) 0))
-		     (output outbuf)
-		     (set! outbuf "") )
+		   (when (and outbuf (fx> outbufindex 0))
+                     (output outbuf 0 outbufindex)
+		     (set! outbufindex 0))
                    ;; Note some odd closesocket() behavior with discarded output at:
                    ;; http://msdn.microsoft.com/en-us/library/ms738547 (v=vs.85).aspx
 		   (unless (##sys#slot data 2)      ;; #t if abandoned
@@ -1062,9 +1075,9 @@ char *skt_strerror(int err) {
 		     (socket-close! so))))
 	       (and outbuf
 		    (lambda ()
-		      (when (fx> (##sys#size outbuf) 0)
-			(output outbuf)
-			(set! outbuf "") ) ) ) ) ) )
+		      (when (fx> outbufindex 0)
+			(output outbuf 0 outbufindex)
+			(set! outbufindex 0) ) ) ) ) ) )
 	(##sys#setslot in 3 "(socket)")
 	(##sys#setslot out 3 "(socket)")
 	(##sys#setslot in 7 'socket6)
