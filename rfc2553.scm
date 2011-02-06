@@ -823,7 +823,7 @@ char *skt_strerror(int err) {
              (n (%socket-send! so buf start count flags timeout)))
         (if (fx< n len)
             (loop (fx- len n) (fx+ start n))
-            slen))))) ;; void?
+            (void))))))
 
 ;; Socket output chunk size for send-all.  For compatibility with Unit TCP; maybe not necessary.
 ;; If #f, attempt to send as much as possible.  Only question is whether it is safe to exceed
@@ -961,7 +961,7 @@ char *skt_strerror(int err) {
 	       (lambda ()
 		 (unless iclosed
 		   (set! iclosed #t)
-		   (unless (##sys#slot data 1)
+		   (unless (##sys#slot data 1)       ;; Skip this for dgram?
 		     (socket-shutdown! so shut/rd))  ;; Must not error if peer has shutdown.
 		   (when oclosed
 		     (socket-close! so))))
@@ -1028,10 +1028,23 @@ char *skt_strerror(int err) {
 	      (make-output-port
 	       (if outbuf
 		   (lambda (s)
-		     (set! outbuf (##sys#string-append outbuf s))
-		     (when (fx>= (##sys#size outbuf) outbufsize)
-		       (output outbuf)
-		       (set! outbuf "") ) )
+                     ;; This sends the whole existing buffer + string as soon as it exceeds
+                     ;; the buffer size.  That is useful to buffer small amounts of data
+                     ;; (bufsz < chunksz).  We could also send only in bufsz increments.
+                     ;; That is useful when bufsz > chunksz and bufsz is a multiple (I think).
+                     ;; Also may make sense when sending UDP to guarantee packets are always
+                     ;; fixed size until an explicit flush.  Of course if you have that requirement
+                     ;; I suspect you will need to construct packets/strings yourself to ensure
+                     ;; the last one is padded. (?)
+                     (cond ((and (fx= (##sys#size outbuf) 0)
+                                 (fx>= (##sys#size s) outbufsize))
+                            (output s)) ;; empty buf, s >= bufsz
+                           (else
+                            (set! outbuf (##sys#string-append outbuf s))
+                            (when (fx>= (##sys#size outbuf) outbufsize)
+                              (output outbuf)
+                              (set! outbuf ""))  ;; strangely, returns a value when compiled
+                            (void))))
 		   (lambda (s) 
 		     (when (fx> (##sys#size s) 0)
 		       (output s)) ) )
