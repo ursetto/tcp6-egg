@@ -4,6 +4,8 @@
 ;; not all errors close the socket (probably should) -- e.g., recv failure, send failure;
 ;;     however, on a timeout, ports require that the socket stay open
 ;; implement socket-receive
+;; output line buffering not implemented
+;; socket ports work with datagrams
 
 (use foreigners)
 (use srfi-4)
@@ -935,7 +937,8 @@ char *skt_strerror(int err) {
 	     (iclosed #f) 
 	     (oclosed #f)
 	     (outbufsize (socket-send-buffer-size))
-	     (outbuf (and outbufsize (fx> outbufsize 0) (make-string outbufsize)))
+	     (outbuf (and outbufsize (fx> outbufsize 0)
+			  (make-string outbufsize)))
 	     (outbufindex 0)
 	     (tmr (socket-read-timeout))
 	     (tmw (socket-write-timeout))
@@ -1040,23 +1043,34 @@ char *skt_strerror(int err) {
 
                      ;; Modified from Unit TCP.  No longer does string-appends to build buffer;
                      ;; instead writes into static buffer until exhausted, with a single
-                     ;; string-append at end if sending more than buffer space.
-                     (let ((olen (+ (##sys#size s) outbufindex)))
+                     ;; string-append at end if exceeded buffer space.
+                     (let ((olen (fx+ (##sys#size s) outbufindex)))
                        (cond ((fx= (##sys#size s) 0))
-                             ((and (fx= outbufindex 0)
-                                   (fx>= (##sys#size s) outbufsize))
-                              (output s 0 (##sys#size s))) ;; empty buf, s >= bufsz
-                             ((< olen outbufsize)
+                             ((fx< olen outbufsize)
                               (##core#inline "C_substring_copy" s outbuf 0 (##sys#size s) outbufindex)
                               (set! outbufindex olen))
-                             ((= olen outbufsize)
+                             ((fx= olen outbufsize)
                               (##core#inline "C_substring_copy" s outbuf 0 (##sys#size s) outbufindex)
                               (output outbuf 0 outbufsize)
                               (set! outbufindex 0))
                              (else
-                              (output (##sys#string-append (substring outbuf 0 outbufindex) s)
-                                      0 olen)
-                              (set! outbufindex 0))))
+			      ;; Optimizations: If empty buffer, no string-append required.
+			      ;; Future opts: Can probably do smaller string appends of one
+			      ;; chunk for chunk alignment, then write rest out.  Until then,
+			      ;; you can flush the buffer before a big write.
+			      (let* ((slop (fxmod olen outbufsize))
+				     (end (fx- olen slop)))
+				(print `(slop ,slop end ,end))
+				(let ((s (if (fx= outbufindex 0)
+					     s
+					     (##sys#string-append
+					      (substring outbuf 0 outbufindex) s))))
+				  (print `(s ,s))
+				  (output s 0 end)
+				  (when (fx> slop 0)
+				    (print `(slopping))
+				    (##core#inline "C_substring_copy" s outbuf end olen 0))
+				  (set! outbufindex slop))))))
                      (void))
 		   (lambda (s) 
 		     (when (fx> (##sys#size s) 0)
