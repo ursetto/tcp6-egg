@@ -724,6 +724,7 @@ char *skt_strerror(int err) {
 
 ;; (socket-bind! s (addrinfo-address (car (address-information "127.0.0.1" service: 9112 socktype: sock/stream flags: ai/passive))))
 ;; ... is verbose; perhaps could be streamlined.
+;; However, normal usage would be (socket-bind! s (inet-address "127.0.0.1" 9112)).
 
 (define (socket-bind! so saddr)
   (define _bind (foreign-lambda int "bind" int scheme-pointer int))
