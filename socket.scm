@@ -883,15 +883,27 @@ char *skt_strerror(int err) {
         (network-error/errno* 'socket-shutdown! err "unable to shutdown socket" so how))))
   (void))
 
+;; Return #f for unbound socket.  On Windows, must test WSAEINVAL.
+;; On UNIX, testing for port 0 should be sufficient.
+;; UNIX sockets don't have a name; just return #f.
 (define (socket-name so)   ;; a legacy name
   (define _free (foreign-lambda void "C_free" c-pointer))
-  (let-location ((len int))
-    (let ((sa (_getsockname (socket-fileno so) (location len))))
-      (unless sa
-          (network-error/errno 'socket-name "unable to get socket name" so))
-      (let ((addr (sa->sockaddr sa len)))
-	(_free sa)
-	addr))))
+  (if (eq? (socket-family so) AF_UNIX)
+      #f
+      (let-location ((len int))
+	(let ((sa (_getsockname (socket-fileno so) (location len))))
+	  (let ((err errno))
+	    (cond (sa
+		   (let ((addr (sa->sockaddr sa len)))
+		     (_free sa)
+		     (if (= 0 (sockaddr-port addr))
+			 #f
+			 addr)))
+		  (else
+		   (if (cond-expand (windows (eq? err _einval))
+				    (else #f))
+		       #f
+		       (network-error/errno 'socket-name "unable to get socket name" so)))))))))
 
 (define (socket-peer-name so)
   (define _free (foreign-lambda void "C_free" c-pointer))
