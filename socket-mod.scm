@@ -6,6 +6,9 @@
  ai/canonname ai/numerichost ai/passive
  ni/numerichost ni/numericserv ni/dgram ni/namereqd ni/nofqdn
 
+ integer->address-family integer->protocol-type integer->socket-type
+ address-family->integer protocol-type->integer socket-type->integer
+
  sockaddr-family sockaddr-address sockaddr-port sockaddr-path sockaddr->string
 
  address-information name-information inet-address

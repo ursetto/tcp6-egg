@@ -37,7 +37,7 @@
 ;; OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-(import scheme chicken foreign)
+(import scheme (except chicken errno) foreign)
 (use foreigners)
 (use srfi-4 extras ports)
 (use (only srfi-13 string-index))
@@ -887,21 +887,25 @@ char *skt_strerror(int err) {
   (define _free (foreign-lambda void "C_free" c-pointer))
   (let-location ((len int))
     (let ((sa (_getsockname (socket-fileno so) (location len))))
-      (if (fx= sa -1)
-          (network-error/errno 'socket-name "unable to get socket name" so)
-          (let ((addr (sa->sockaddr sa len)))
-            (_free sa)
-            addr)))))
+      (unless sa
+          (network-error/errno 'socket-name "unable to get socket name" so))
+      (let ((addr (sa->sockaddr sa len)))
+	(_free sa)
+	addr))))
 
 (define (socket-peer-name so)
   (define _free (foreign-lambda void "C_free" c-pointer))
   (let-location ((len int))
     (let ((sa (_getpeername (socket-fileno so) (location len))))
-      (if (fx= sa -1)
-          (network-error/errno 'socket-peer-name "unable to get socket peer name" so)
-          (let ((addr (sa->sockaddr sa len)))
-            (_free sa)
-            addr)))))
+      (let ((err errno))
+	(if sa
+	    (let ((addr (sa->sockaddr sa len)))
+	      (_free sa)
+	      addr)
+	    (if (eq? err _enotconn)
+		#f
+		(network-error/errno* 'socket-peer-name err
+				      "unable to get socket peer name" so)))))))
 
 (define _getsockname
   (foreign-lambda* c-pointer ((int s) ((c-pointer int) len))
