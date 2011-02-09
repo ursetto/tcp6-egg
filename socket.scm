@@ -11,8 +11,10 @@
 ;; port->fileno from accessing port data (which is in a different format).  This is hardcoded
 ;; in the core library.
 
+(import scheme chicken foreign)
 (use foreigners)
-(use srfi-4)
+(use srfi-4 extras ports)
+(use (only srfi-13 string-index))
 
 (foreign-declare "
 #include <errno.h>
@@ -382,22 +384,9 @@ char *skt_strerror(int err) {
 
 ;;; socket operations
 
-(define socket-startup
-  (foreign-lambda* bool () "
-#ifdef _WIN32
-     C_return(WSAStartup(MAKEWORD(1, 1), &wsa) == 0);
-#else
-     signal(SIGPIPE, SIG_IGN);
-     C_return(1);
-#endif
-"))
-
-(unless (socket-startup)   ;; hopefully, this is safe to run multiple times
-  (network-error 'socket-startup "cannot initialize socket code"))
-
 (define socket-connect-timeout)
-(define socket-read-timeout)
-(define socket-write-timeout)
+(define socket-receive-timeout)
+(define socket-send-timeout)
 (define socket-accept-timeout)
 
 (let ()
@@ -405,10 +394,10 @@ char *skt_strerror(int err) {
     (when x (##sys#check-exact x loc))
     x)
   (define minute (fx* 60 1000))
-  (set! socket-read-timeout (make-parameter minute (check 'socket-read-timeout)))
-  (set! socket-write-timeout (make-parameter minute (check 'socket-write-timeout))) 
+  (set! socket-receive-timeout (make-parameter minute (check 'socket-receive-timeout)))
+  (set! socket-send-timeout (make-parameter minute (check 'socket-send-timeout))) 
   (set! socket-connect-timeout (make-parameter #f (check 'socket-connect-timeout))) 
-  (set! socket-accept-timeout (make-parameter #f (check 'socket-accept-timeout))) )
+  (set! socket-accept-timeout (make-parameter #f (check 'socket-accept-timeout))))
 
 (define-foreign-variable errno int "errno")
 (define-foreign-variable strerrno c-string "skt_strerror(errno)")
@@ -761,7 +750,7 @@ char *skt_strerror(int err) {
               (fx> end buflen)
               (fx< end start))
       (network-error 'socket-receive! "receive buffer offsets out of range" start end))
-    (%socket-receive! so buf start (fx- end start) flags (socket-read-timeout))))
+    (%socket-receive! so buf start (fx- end start) flags (socket-receive-timeout))))
 
 ;; Variant of socket-receive! which does not check so, buf, start, or len and which takes
 ;; read timeout as parameter.  Basically for use in socket ports.
@@ -802,7 +791,7 @@ char *skt_strerror(int err) {
               (fx> end buflen)
               (fx< end start))
       (network-error 'socket-send! "send buffer offsets out of range" start end))
-    (%socket-send! so buf start (fx- end start) flags (socket-write-timeout))))
+    (%socket-send! so buf start (fx- end start) flags (socket-send-timeout))))
 (define (%socket-send! so buf start len flags timeout)
   (define _send_offset (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
                                              (int len) (int flags))
@@ -855,7 +844,7 @@ char *skt_strerror(int err) {
               (fx< end start))
       (network-error 'socket-send-all! "send buffer offsets out of range" start end))
     (%socket-send-all! so buf start (fx- end start) flags
-                       (socket-write-timeout)
+                       (socket-send-timeout)
                        (socket-send-size))))
 
 ;; Shutdown socket.  If socket is not connected, silently ignore the error, because
@@ -923,7 +912,7 @@ char *skt_strerror(int err) {
                    "#else\n"
                    "C_return(0);\n" ;; silently fail
                    "#endif\n")
-                 s (tcp-bind-ipv6-only)))
+                 (socket-fileno so) flag))
     (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
 
 ;;; ports
@@ -955,8 +944,8 @@ char *skt_strerror(int err) {
 	     (outbuf (and outbufsize (fx> outbufsize 0)
 			  (make-string outbufsize)))
 	     (outbufindex 0)
-	     (tmr (socket-read-timeout))
-	     (tmw (socket-write-timeout))
+	     (tmr (socket-receive-timeout))
+	     (tmw (socket-send-timeout))
 	     (output-chunk-size (socket-send-size))
 	     (read-input
 	      (lambda ()
@@ -1120,4 +1109,19 @@ char *skt_strerror(int err) {
     (if (input-port? p)
 	(##sys#setislot d 1 #t)
 	(##sys#setislot d 2 #t))))   ;; Note: polarity is reversed from unit tcp
+
+;;; network startup
+
+(define socket-startup
+  (foreign-lambda* bool () "
+#ifdef _WIN32
+     C_return(WSAStartup(MAKEWORD(1, 1), &wsa) == 0);
+#else
+     signal(SIGPIPE, SIG_IGN);
+     C_return(1);
+#endif
+"))
+
+(unless (socket-startup)   ;; hopefully, this is safe to run multiple times
+  (network-error 'socket-startup "cannot initialize socket code"))
 

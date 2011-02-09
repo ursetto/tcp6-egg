@@ -8,6 +8,8 @@
 ;; creating a 'socket port (slot 7) will allow posixunix to call ##sys#tcp-port->fileno,
 ;; which will bomb
 
+;; input buffer and output chunk size are not configurable
+
 ;; On XP, you must do 'netsh interface ipv6 install' to activate ipv6.
 
 ;;;; tcp.scm - Networking stuff
@@ -103,7 +105,9 @@
 (define (tcp-accept tcpl)
   (parameterize ((socket-accept-timeout (tcp-accept-timeout)))
     (let ((so (socket-accept (tcp-listener-socket tcpl))))
-      ;; FIXME: Set buffer sizes
+      (parameterize ((socket-send-size           +output-chunk-size+)
+                     (socket-send-buffer-size    (tcp-buffer-size))
+                     (socket-receive-buffer-size +input-buffer-size+)))
       (socket-i/o-ports so))))
 
 (define (tcp-accept-ready? tcpl)
@@ -124,8 +128,12 @@
   ;; than ipproto/tcp because Windows is silly.
   (let ((ais (filter (lambda (ai) (eq? (addrinfo-socktype ai) sock/stream))
                      ais))) 
-    (parameterize ((socket-connect-timeout (tcp-connect-timeout)))
-      ;; FIXME: Set buffer sizes
+    (parameterize ((socket-connect-timeout (tcp-connect-timeout))
+                   (socket-receive-timeout (tcp-read-timeout))
+                   (socket-send-timeout    (tcp-write-timeout))
+                   (socket-send-size           +output-chunk-size+)
+                   (socket-send-buffer-size    (tcp-buffer-size))
+                   (socket-receive-buffer-size +input-buffer-size+))
       (socket-i/o-ports (socket-connect/ai ais)))))
 
 (define (tcp-connect host . more)

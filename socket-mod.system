@@ -1,0 +1,7 @@
+;; -*- scheme -*-
+
+(use system)
+(define-system socket-mod
+  (compiled-scheme-file "socket-mod.scm")
+  (compiled-scheme-file "tcp6.scm"))
+(current-system socket-mod)
