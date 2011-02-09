@@ -7,6 +7,10 @@
 ;; output line buffering not implemented
 ;; socket ports work with datagrams
 
+;; Socket type (slot 7) is deliberately set to "socket6" instead of "socket" to prevent
+;; port->fileno from accessing port data (which is in a different format).  This is hardcoded
+;; in the core library.
+
 (use foreigners)
 (use srfi-4)
 
@@ -900,9 +904,6 @@ char *skt_strerror(int err) {
     "C_return(ss);"))
 
 
-
-
-
 ;;; socket options
 
 ;; FIXME: Temporary for tcp6 egg
@@ -913,6 +914,7 @@ char *skt_strerror(int err) {
                  so flag))
     (network-error/errno 'tcp-listen "error setting SO_REUSEADDR" so)))
 
+;; FIXME: Temporary for tcp6 egg
 (define (set-socket-v6only! so flag)
   (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag))
                    "#ifdef IPV6_V6ONLY\n"
