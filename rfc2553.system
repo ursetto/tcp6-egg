@@ -2,6 +2,6 @@
 
 (use system)
 (define-system rfc2553
-  (compiled-scheme-file "rfc2553.scm")
+  (compiled-scheme-file "socket.scm")
   (compiled-scheme-file "tcp6.scm"))
 (current-system rfc2553)
