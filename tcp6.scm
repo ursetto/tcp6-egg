@@ -163,7 +163,7 @@
      (sockaddr-port (socket-peer-name so)))))
 
 (define (tcp-listener-port tcpl)
-  (socket-port (socket-name so)))
+  (sockaddr-port (socket-name (tcp-listener-socket tcpl))))
 
 (define (tcp-abandon-port p)
   (socket-abandon-port! p))

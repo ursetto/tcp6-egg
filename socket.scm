@@ -926,8 +926,8 @@ char *skt_strerror(int err) {
   (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag)) 
                    "flag = flag ? 1 : 0;
                     C_return(setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&flag, sizeof(flag)));") 
-                 so flag))
-    (network-error/errno 'tcp-listen "error setting SO_REUSEADDR" so)))
+                 (socket-fileno so) flag))
+    (network-error/errno 'set-socket-reuseaddr! "error setting SO_REUSEADDR" so)))
 
 ;; FIXME: Temporary for tcp6 egg
 (define (set-socket-v6only! so flag)
@@ -939,7 +939,7 @@ char *skt_strerror(int err) {
                    "C_return(0);\n" ;; silently fail
                    "#endif\n")
                  (socket-fileno so) flag))
-    (network-error/errno 'tcp-listen "error setting IPV6_V6ONLY" so)))
+    (network-error/errno 'set-socket-v6only! "error setting IPV6_V6ONLY" so)))
 
 ;;; ports
 
