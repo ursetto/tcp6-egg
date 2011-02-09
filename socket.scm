@@ -799,6 +799,15 @@ char *skt_strerror(int err) {
                         (network-error/errno* 'socket-receive! err "cannot read from socket" so)))))
               (else n))))))
 
+;; Receive up to LEN bytes from socket and return as a string.
+;; TODO: Each socket or perhaps thread should have a dedicated input buffer which is
+;; equal to the largest LEN ever given here, to avoid excessive allocation.
+;; TODO: Should LEN default to socket-receive-buffer-size ?
+(define (socket-receive so len #!optional (flags 0))
+  (let ((buf (make-string len)))
+    (let ((n (%socket-receive! so buf 0 len flags (socket-receive-timeout))))
+      (substring buf 0 n))))
+
 ;; Returns 2 values: number of bytes received, and socket address from which they were
 ;; received.
 ;; NB Cut-and-paste from socket-receive! -- not clear whether we can safely
@@ -817,10 +826,9 @@ char *skt_strerror(int err) {
               (fx> end buflen)
               (fx< end start))
       (network-error 'socket-receive-from! "receive buffer offsets out of range" start end))
-    (%socket-receive-from! so buf start (fx- end start) flags (socket-receive-timeout))))
+    (let ((R (%socket-receive-from! so buf start (fx- end start) flags (socket-receive-timeout))))
+      (values (car R) (cdr R)))))
 
-;; Variant of socket-receive! which does not check so, buf, start, or len and which takes
-;; read timeout as parameter.  Basically for use in socket ports.
 (define (%socket-receive-from! so buf start len flags timeout)
   (define _recvfrom_offset (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
 						 (int len) (int flags)
@@ -839,8 +847,17 @@ char *skt_strerror(int err) {
 			 (else
 			  (network-error/errno* 'socket-receive! err "cannot read from socket" so)))))
 		(else
-		 (values n
-			 (sa->sockaddr (location addr) addrlen)))))))))
+		 (cons n
+		       (sa->sockaddr (location addr) addrlen)))))))))
+
+;; Receive up to LEN bytes from unconnected socket and return 2 values:
+;; the received string and the socket address from whence it came.
+;; See TODOs at socket-receive.
+(define (socket-receive-from so len #!optional (flags 0))
+  (let ((buf (make-string len)))
+    (let ((R (%socket-receive-from! so buf 0 len flags (socket-receive-timeout))))
+      (values (substring buf 0 (car R))
+	      (cdr R)))))
 
 (define (socket-receive-ready? so)
   (let ((f (select-for-read (socket-fileno so))))
