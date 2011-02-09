@@ -926,12 +926,25 @@ char *skt_strerror(int err) {
 
 ;;; ports
 
+(define-inline (socket-port-data p)
+  (##sys#check-port p 'socket-abandon-port!)
+  (unless (eq? (##sys#slot p 7)
+	       'socket6)            ;; port data has no header (right now); use port type id
+    (error 'socket-port-data "argument is not a socket port" p))
+  (##sys#port-data p))
+(define-inline (%socket-port-data-socket data)            (##sys#slot data 0))
+(define-inline (%socket-port-data-input-abandoned? data)  (##sys#slot data 1))
+(define-inline (%socket-port-data-output-abandoned? data) (##sys#slot data 2))
+
+(define (socket-i/o-port->socket p)
+  (%socket-port-data-socket (socket-port-data p)))
+
 (define socket-i/o-ports
     (lambda (so)
       (let* ((fd (socket-fileno so))
              (input-buffer-size (socket-receive-buffer-size))
 	     (buf (make-string input-buffer-size))
-	     (data (vector fd #f #f buf 0))
+	     (data (vector so #f #f buf 0))  ;; Native socket ports have fd in slot 0.
 	     (buflen 0)
 	     (bufindex 0)
 	     (iclosed #f) 
@@ -965,7 +978,7 @@ char *skt_strerror(int err) {
 	       (lambda ()
 		 (unless iclosed
 		   (set! iclosed #t)
-		   (unless (##sys#slot data 1)       ;; Skip this for dgram?
+		   (unless (%socket-port-data-input-abandoned? data)       ;; Skip this for dgram?
 		     (socket-shutdown! so shut/rd))  ;; Must not error if peer has shutdown.
 		   (when oclosed
 		     (socket-close! so))))
@@ -1083,7 +1096,7 @@ char *skt_strerror(int err) {
 		     (set! outbufindex 0))
                    ;; Note some odd closesocket() behavior with discarded output at:
                    ;; http://msdn.microsoft.com/en-us/library/ms738547 (v=vs.85).aspx
-		   (unless (##sys#slot data 2)      ;; #t if abandoned
+		   (unless (%socket-port-data-output-abandoned? data)
 		     (socket-shutdown! so shut/wr))
 		   (when iclosed
 		     (socket-close! so))))
@@ -1099,3 +1112,10 @@ char *skt_strerror(int err) {
 	(##sys#set-port-data! in data)
 	(##sys#set-port-data! out data)
 	(values in out) ) ) ) 
+
+(define (socket-abandon-port! p)
+  (let ((d (socket-port-data p)))
+    (if (input-port? p)
+	(##sys#setislot d 1 #t)
+	(##sys#setislot d 2 #t))))   ;; Note: polarity is reversed from unit tcp
+

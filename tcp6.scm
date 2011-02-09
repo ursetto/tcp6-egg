@@ -139,37 +139,22 @@
 	(network-error 'tcp-connect "node and/or service lookup failed" host port))
       (tcp-connect/ai ais))))
 
-(define (##sys#tcp-port->fileno p)
-  (let ((data (##sys#port-data p)))
-    (if (vector? data)			; a meagre test, but better than nothing
-	(##sys#slot data 0)
-	(error '##sys#tcp-port->fileno "argument does not appear to be a TCP port" p))))
-
 (define (tcp-addresses p)
   (##sys#check-port p 'tcp-addresses)
-  (let ((fd (##sys#tcp-port->fileno p)))
-    (let ((so (make-socket fd 0 0 0)))   ;; temporary -- until we get socket associated w/ port
-      (values
-       (sockaddr-address (socket-name so))
-       (sockaddr-address (socket-peer-name so))))))
+  (let ((so (socket-i/o-port->socket p)))
+    (values
+     (sockaddr-address (socket-name so))
+     (sockaddr-address (socket-peer-name so)))))
 
 (define (tcp-port-numbers p)
   (##sys#check-port p 'tcp-port-numbers)
-  (let ((fd (##sys#tcp-port->fileno p)))
-    (let ((so (make-socket fd 0 0 0)))
-      (values
-       (sockaddr-port (socket-name so))
-       (sockaddr-port (socket-peer-name so))))))
+  (let ((so (socket-i/o-port->socket p)))
+    (values
+     (sockaddr-port (socket-name so))
+     (sockaddr-port (socket-peer-name so)))))
 
 (define (tcp-listener-port tcpl)
-  (let ((fd (tcp-listener-fileno tcpl)))
-    (let ((so (make-socket fd 0 0 0)))
-      (socket-port (socket-name so)))
-    port))
+  (socket-port (socket-name so)))
 
 (define (tcp-abandon-port p)
-  (##sys#check-port p 'tcp-abandon-port)
-  (##sys#setislot
-   (##sys#port-data p)
-   (if (##sys#slot p 1) 2 1)
-   #t) )
+  (socket-abandon-port! p))
