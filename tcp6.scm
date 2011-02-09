@@ -48,17 +48,9 @@
 ;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 ;; OF THE POSSIBILITY OF SUCH DAMAGE.
 
-;(declare
- 
-  (use extras ;; scheduler
-       )
-  ;; (export tcp-close tcp-listen tcp-connect tcp-connect/ai tcp-accept tcp-accept-ready? ##sys#tcp-port->fileno tcp-listener? tcp-addresses
-  ;;         tcp-abandon-port tcp-listener-port tcp-listener-fileno tcp-port-numbers tcp-buffer-size tcp-listener-socket
-  ;;         tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout)
-
-;;(include "common-declarations.scm")
-
-;; (register-feature! 'tcp)
+(import scheme chicken)
+(use extras)
+(require-library srfi-1) (import (only srfi-1 filter))
 
 (define-inline (tcp-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))

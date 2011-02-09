@@ -1,0 +1,7 @@
+;; -*- scheme *-*
+(compile -s -O2 -d1 socket-mod.scm -o socket.so -J)
+(compile -s -d0 socket.import.scm) 
+
+(compile -s -O2 -d1 tcp6-mod.scm -o tcp6.so -J)
+(compile -s -d0 tcp6.import.scm) 
+
