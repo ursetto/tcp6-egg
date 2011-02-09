@@ -1,17 +1,3 @@
-;; tcp-connect should be allowed to connect to only 1 address (or addrinfo list)
-
-;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
-;; tcp-listen accepts service name string
-;; tcp-connect accepts service name string (may issue SRV request)
-;; tcp-connect connects to multiple addresses (or explicitly with tcp-connect/ai)
-
-;; creating a 'socket port (slot 7) will allow posixunix to call ##sys#tcp-port->fileno,
-;; which will bomb
-
-;; input buffer and output chunk size are not configurable
-
-;; On XP, you must do 'netsh interface ipv6 install' to activate ipv6.
-
 ;;; tcp6.scm
 
 ;;; License
@@ -167,3 +153,14 @@
 
 (define (tcp-abandon-port p)
   (socket-abandon-port! p))
+
+;;; notes
+
+;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
+;; tcp-listen accepts service name string
+;; tcp-connect accepts service name string (may issue SRV request)
+;; tcp-connect connects to multiple addresses (or explicitly with tcp-connect/ai)
+
+;; input buffer and output chunk size are not configurable
+
+;; On XP, you must do 'netsh interface ipv6 install' to activate ipv6.
