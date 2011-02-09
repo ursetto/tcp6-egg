@@ -96,6 +96,7 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #define EINPROGRESS WSAEINPROGRESS
 #define ENOTCONN WSAENOTCONN
+#define EINVAL WSAEINVAL
 /* Note that it may be possible to replace all references to errno/GetLastError() with
    a getsockopt(SO_ERROR). */
 #define errno (WSAGetLastError())
@@ -435,6 +436,7 @@ char *skt_strerror(int err) {
 (define-foreign-variable _enetunreach int "ENETUNREACH")
 (define-foreign-variable _ehostunreach int "EHOSTUNREACH")
 (define-foreign-variable _enotconn int "ENOTCONN")
+(define-foreign-variable _einval int "EINVAL")
 
 (define-foreign-variable SHUT_RD int "SHUT_RD")
 (define-foreign-variable SHUT_WR int "SHUT_WR")
