@@ -62,7 +62,7 @@
 (define (udp-connected? s)                 ;; does not check if sock/dgram
   (and (socket-peer s)))
 
-;;; udp-open-socket : -> udp-socket
+;;; udp-open-socket [family] : -> udp-socket
 (define (udp-open-socket #!optional (family 'inet))
   (let ((af (case family
               ((inet) af/inet) ((inet6) af/inet6)

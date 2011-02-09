@@ -711,8 +711,7 @@ char *skt_strerror(int err) {
   (let loop ((ais ais))
     (let* ((ai (car ais))
            (addr (addrinfo-address ai))
-           (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
-           (s (socket-fileno so)))
+           (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
       (if (null? (cdr ais))
           (begin (socket-connect! so addr) so)
           (condition-case
