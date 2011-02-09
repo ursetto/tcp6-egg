@@ -110,6 +110,8 @@
 ;; Silently skips non-stream objects for user convenience.
 ;; Returns: I/O ports bound to the succeeding connection, or throws an error
 ;; corresponding to the last failed connection attempt.
+;; WARNING: On Windows, address-information returns 0 for socket-type unless
+;; provided via type: (which is redundant info).
 (define (tcp-connect/ai ais)
   ;; Filter first to preserve our "last exception" model.  Filter on sock/stream rather
   ;; than ipproto/tcp because Windows is silly.

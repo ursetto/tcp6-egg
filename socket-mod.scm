@@ -25,9 +25,9 @@
  socket-close!
  socket-name socket-peer-name
 
- socket-receive!
+ socket-receive! socket-receive-from!
  socket-receive-ready? socket-accept-ready?
- socket-send! socket-send-all!
+ socket-send! socket-send-all! socket-send-to!
  socket-send-size socket-send-buffer-size socket-receive-buffer-size
 
  ;; options

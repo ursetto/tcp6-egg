@@ -183,6 +183,7 @@ char *skt_strerror(int err) {
 
 (define-foreign-record-type (sa "struct sockaddr")
   (int sa_family sa-family))
+(define-foreign-variable _sockaddr_storage_size int "sizeof(struct sockaddr_storage)")
 
 (define-record sockaddr family blob)
 
@@ -798,6 +799,49 @@ char *skt_strerror(int err) {
                         (network-error/errno* 'socket-receive! err "cannot read from socket" so)))))
               (else n))))))
 
+;; Returns 2 values: number of bytes received, and socket address from which they were
+;; received.
+;; NB Cut-and-paste from socket-receive! -- not clear whether we can safely
+;; use recvfrom with NULL socket address to simulate recv() on all platforms.
+(define (socket-receive-from! so buf #!optional (start 0) (end #f) (flags 0))
+  (let* ((buflen (cond ((string? buf) (string-length buf))
+                       ((blob? buf) (blob-size buf))
+                       (else
+                        (network-error 'socket-receive-from!
+                                       "receive buffer must be a blob or a string" so))))
+         (end (or end buflen)))
+    (##sys#check-exact start)    
+    (##sys#check-exact end)
+    (##sys#check-exact flags)
+    (when (or (fx< start 0)
+              (fx> end buflen)
+              (fx< end start))
+      (network-error 'socket-receive-from! "receive buffer offsets out of range" start end))
+    (%socket-receive-from! so buf start (fx- end start) flags (socket-receive-timeout))))
+
+;; Variant of socket-receive! which does not check so, buf, start, or len and which takes
+;; read timeout as parameter.  Basically for use in socket ports.
+(define (%socket-receive-from! so buf start len flags timeout)
+  (define _recvfrom_offset (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
+						 (int len) (int flags)
+						 (scheme-pointer addr) ((c-pointer int) addrlen))
+                         "C_return(recvfrom(s,((char*)buf)+start,len,flags,addr,addrlen));"))
+  (let-location ((addrlen int _sockaddr_storage_size))
+    (let ((s (%socket-fileno so))
+	  (addr (make-blob _sockaddr_storage_size)))
+      (let restart ()
+	(let ((n (_recvfrom_offset s buf start len flags addr (location addrlen))))
+	  (cond ((eq? -1 n)
+		 (let ((err errno))
+		   (cond ((eq? err _ewouldblock)
+			  (block-for-timeout! 'socket-receive! timeout s #:input)
+			  (restart))
+			 (else
+			  (network-error/errno* 'socket-receive! err "cannot read from socket" so)))))
+		(else
+		 (values n
+			 (sa->sockaddr (location addr) addrlen)))))))))
+
 (define (socket-receive-ready? so)
   (let ((f (select-for-read (socket-fileno so))))
     (when (eq? -1 f)
@@ -836,18 +880,6 @@ char *skt_strerror(int err) {
                         (network-error/errno* 'socket-send! err "cannot send to socket" so)))))
               (else n))))))
 
-(define-foreign-variable +maximum-string-length+ int "C_HEADER_SIZE_MASK")  ;; horrible
-;; NB.  Possible the chunking functionality belongs in %socket-send.  We *could* limit
-;; the packet size there.
-(define (%socket-send-all! so buf start slen flags timeout chunksz)
-  (let ((chunksz (or chunksz +maximum-string-length+)))
-    (let loop ((len slen) (start start))
-      (let* ((count (fxmin chunksz len))
-             (n (%socket-send! so buf start count flags timeout)))
-        (if (fx< n len)
-            (loop (fx- len n) (fx+ start n))
-            (void))))))
-
 ;; Socket output chunk size for send-all.  For compatibility with Unit TCP; maybe not necessary.
 ;; If #f, attempt to send as much as possible.  Only question is whether it is safe to exceed
 ;; the socket send buffer size, which may (according to Microsoft pages) cause stalling until
@@ -856,6 +888,16 @@ char *skt_strerror(int err) {
 (define socket-send-buffer-size (make-parameter #f))
 ;;(define socket-receive-size (make-parameter 1024))      ;;?
 (define socket-receive-buffer-size (make-parameter 4096))
+
+(define-foreign-variable +maximum-string-length+ int "C_HEADER_SIZE_MASK")  ;; horrible
+(define (%socket-send-all! so buf start slen flags timeout chunksz)
+  (let ((chunksz (or chunksz +maximum-string-length+)))
+    (let loop ((len slen) (start start))
+      (let* ((count (fxmin chunksz len))
+             (n (%socket-send! so buf start count flags timeout)))
+        (if (fx< n len)
+            (loop (fx- len n) (fx+ start n))
+            (void))))))
 
 (define (socket-send-all! so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
@@ -874,6 +916,43 @@ char *skt_strerror(int err) {
     (%socket-send-all! so buf start (fx- end start) flags
                        (socket-send-timeout)
                        (socket-send-size))))
+
+;; Like socket-send!, but used for connectionless protocols; sends to non-connected
+;; address SADDR.
+(define (socket-send-to! so buf saddr #!optional (start 0) (end #f) (flags 0))
+  (let* ((buflen (cond ((string? buf) (string-length buf))
+                       ((blob? buf) (blob-size buf))
+                       (else
+                        (network-error 'socket-send-to!
+                                       "send buffer must be a blob or a string" so))))
+         (end (or end buflen)))
+    (##sys#check-exact start)
+    (##sys#check-exact end)
+    (##sys#check-exact flags)
+    (when (or (fx< start 0)
+              (fx> end buflen)
+              (fx< end start))
+      (network-error 'socket-send-to! "send buffer offsets out of range" start end))
+    (%socket-send-to! so buf saddr start (fx- end start) flags (socket-send-timeout))))
+(define (%socket-send-to! so buf saddr start len flags timeout)
+  (define _sendto_offset (foreign-lambda* int ((int s) (scheme-pointer buf)
+					       (int start) (int len) (int flags)
+					       (scheme-pointer addr) (int addrlen))
+                         "C_return(sendto(s,((char*)buf)+start,len,flags,addr,addrlen));"))
+  (let ((s (%socket-fileno so))
+	(addr (sockaddr-blob saddr))    ;; maybe pull this out into caller
+	(addrlen (sockaddr-len saddr)))
+    (let retry ((len len) (start start))
+      (let ((n (_sendto_offset s buf start len flags addr addrlen)))
+        (cond ((eq? -1 n)
+               (let ((err errno))
+                 (cond ((eq? err _ewouldblock)
+                        (block-for-timeout! 'socket-send-to! timeout s #:output)
+                        (retry len start))
+                       (else
+                        (network-error/errno* 'socket-send-to! err "cannot send to socket" so saddr)))))
+              (else n))))))
+
 
 ;; Shutdown socket.  If socket is not connected, silently ignore the error, because
 ;; the peer may have already initiated shutdown.  That behavior should perhaps be configurable.
