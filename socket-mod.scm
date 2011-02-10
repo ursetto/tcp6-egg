@@ -30,10 +30,6 @@
  socket-send! socket-send-all! socket-send-to!
  socket-send-size socket-send-buffer-size socket-receive-buffer-size
 
- ;; options
- set-socket-reuseaddr!     ;; temp, for tcp
- set-socket-v6only!        ;; temp, for tcp
-
  ;; ports
  socket-i/o-ports
  socket-i/o-port->socket
@@ -41,6 +37,26 @@
 
  ;; misc
  parse-inet-address
+
+
+ ;; socket options
+  so/reuseaddr so/debug so/acceptconn so/keepalive so/dontroute
+  so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
+  so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
+  tcp/nodelay
+  ip/options ip/hdrincl ip/tos ip/ttl ip/recvopts ip/recvretopts ip/retopts
+  ip/multicast-if ip/multicast-ttl ip/multicast-loop ip/add-membership ip/drop-membership
+  ipv6/v6only
+  sol/socket ipproto/ip ipproto/ipv6 ipproto/icmp
+  get-socket-option set-socket-option!
+  so-reuse-address? so-debug? so-error so-type
+  so-accept-connections? so-keep-alive? so-dont-route? so-broadcast? so-oob-inline?
+  so-send-buffer so-receive-buffer so-send-low-water so-receive-low-water
+  tcp-no-delay?
+  ip-header-included? ip-type-of-service ip-time-to-live
+  ipv6-v6-only?
+
+ 
 )
 
 (import (only chicken include))
