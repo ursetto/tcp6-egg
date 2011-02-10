@@ -95,8 +95,9 @@
 ;;       (getter-with-setter
 ;;         (lambda (s) (get-int s _ipproto_tcp _tcp_nodelay))
 ;;         (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
-;;     (define tcp-no-delay-set!
-;;       (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
+;;     ;; Named setter is no longer created
+;;     ;; (define tcp-no-delay-set!
+;;     ;;  (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
 
 (define-syntax define-socket-option
   (er-macro-transformer
@@ -112,8 +113,9 @@
           (,(r 'define) ,name
            (getter-with-setter (,(r 'lambda) (s) (,get s ,(local level) ,(local optname)))
                                (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v))))
-          (,(r 'define) ,(setter-symbol name)
-           (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v))))))))
+          ;; (,(r 'define) ,(setter-symbol name)
+          ;;  (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v)))
+          )))))
 
 (define-syntax define-boolean-option
   (syntax-rules ()
@@ -270,14 +272,14 @@
 
 ;;; socket-level options
 
-(define-boolean-option so-reuse-address sol/socket so/reuseaddr)
-(define-boolean-option so-debug sol/socket so/debug)
-(define-socket-option  so-accept-connections sol/socket so/acceptconn set-readonly-option get-boolean-option)
-(define-boolean-option so-keep-alive sol/socket so/keepalive)
-(define-boolean-option so-dont-route sol/socket so/dontroute)
-(define-boolean-option so-broadcast sol/socket so/broadcast)
+(define-boolean-option so-reuse-address? sol/socket so/reuseaddr)
+(define-boolean-option so-debug? sol/socket so/debug)
+(define-socket-option  so-accept-connections? sol/socket so/acceptconn set-readonly-option get-boolean-option)
+(define-boolean-option so-keep-alive? sol/socket so/keepalive)
+(define-boolean-option so-dont-route? sol/socket so/dontroute)
+(define-boolean-option so-broadcast? sol/socket so/broadcast)
 ;(define-socket-option so-linger sol/socket so/linger set-linger-option get-linger-option)
-(define-boolean-option so-oob-inline sol/socket so/oobinline)
+(define-boolean-option so-oob-inline? sol/socket so/oobinline)
 (define-integer-option so-send-buffer sol/socket so/sndbuf)
 (define-integer-option so-receive-buffer sol/socket so/rcvbuf)
 (define-integer-option so-send-low-water sol/socket so/sndlowat)
@@ -289,7 +291,7 @@
 
 ;;; TCP options
 
-(define-boolean-option tcp-no-delay ipproto/tcp tcp/nodelay)
+(define-boolean-option tcp-no-delay? ipproto/tcp tcp/nodelay)
 ;(define-integer-option tcp-max-segment-size ipproto/tcp tcp/maxseg)
 ;(define-boolean-option tcp-no-push ipproto/tcp tcp/nopush)
 ;(define-boolean-option tcp-no-options ipproto/tcp tcp/noopt)
@@ -299,8 +301,8 @@
 
 ;; Most of the IP option interface is currently unimplemented as it
 ;; seems to differ widely between systems.
-(define-boolean-option ip-header-included ipproto/ip ip/hdrincl)
+(define-boolean-option ip-header-included? ipproto/ip ip/hdrincl)
 (define-integer-option ip-type-of-service ipproto/ip ip/tos)
 (define-integer-option ip-time-to-live ipproto/ip ip/ttl)
 
-(define-boolean-option ipv6-v6-only ipproto/ipv6 ipv6/v6only)
+(define-boolean-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only)
