@@ -372,7 +372,7 @@ char *skt_strerror(int err) {
 ;; an inet or inet6 address (which may not match the socket family).  To avoid
 ;; this, specify "::" or "0.0.0.0" explicitly.
 ;; TODO: Port range should probably be checked.
-(define (inet-address ip service)   ;; Not sure if optional service makes sense.
+(define (inet-address ip service)
   (let ((service (and service
 		      (cond ((and (exact? service) (number->string service)))
 			    (else (network-error "service must be a numeric value or #f" service)))))
@@ -391,7 +391,7 @@ char *skt_strerror(int err) {
 ;; Note: (car (name-information addr flags: ni/numerichost)) ==
 ;;         (sockaddr-address (inet-address addr 0)), so there is some redundancy.
 ;; (name-information (inet-address "::1" 0))
-(define (name-information saddr #!key (flags 0))
+(define (name-information saddr #!optional (flags 0))
   (define (massage ni)
     (cond ((string->number (cdr ni))
            => (lambda (p) (cons (car ni) p)))
