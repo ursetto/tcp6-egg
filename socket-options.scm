@@ -1,3 +1,6 @@
+;; TODO: Maybe so-reuse-address -> so-reuse-address?.  But setter so-reuse-address?-set! is weird.
+;; Setter set-so-reuse-address?! is better, maybe.
+
 ;; (declare
 ;;  (hide get-boolean-option set-boolean-option
 ;;        get-integer-option set-integer-option
@@ -87,13 +90,13 @@
               (cdr e))))))
 
 ;; (define-socket-option tcp-no-delay ipproto/tcp tcp/nodelay set-int get-int) =>
-;; (begin
-;;   (define tcp-no-delay
-;;     (getter-with-setter
-;;       (lambda (s) (get-int s _ipproto_tcp _tcp_nodelay))
+;;   (begin
+;;     (define tcp-no-delay
+;;       (getter-with-setter
+;;         (lambda (s) (get-int s _ipproto_tcp _tcp_nodelay))
+;;         (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
+;;     (define tcp-no-delay-set!
 ;;       (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
-;;   (define tcp-no-delay-set!
-;;     (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
 
 (define-syntax define-socket-option
   (er-macro-transformer
@@ -150,9 +153,10 @@
 
 (define (set-integer-option s level name val)
   (##sys#check-exact val 'set-socket-option!)
-  (let ((err (setsockopt/int s level name val)))
-    (check-error err 'set-socket-option!)
-    (void)))
+  (let ((s (if (socket? s) (socket-fileno s) s)))
+    (let ((err (setsockopt/int s level name val)))
+      (check-error err 'set-socket-option!)
+      (void))))
 
 (define (set-boolean-option s level name val)
   (##sys#check-boolean val 'set-socket-option!)
@@ -161,10 +165,11 @@
   (not (= 0 (get-integer-option s level name))))
 
 (define (get-integer-option s level name)
-  (let-location ((val int))
-    (let ((err (getsockopt/int s level name (location val))))
-      (check-error err 'get-socket-option!)
-      val)))
+  (let ((s (if (socket? s) (socket-fileno s) s)))
+    (let-location ((val int))
+      (let ((err (getsockopt/int s level name (location val))))
+        (check-error err 'get-socket-option!)
+        val))))
 
 (define (set-readonly-option s level name val)  ; don't get a symbol here, only an int -- fixme?
   (error 'set-socket-option! "socket option is read-only"))
@@ -201,18 +206,19 @@
 |#
 
 (define (set-socket-option! s level name val)
-  (cond ((boolean? val)
-         (set-boolean-option s level name val))
-        ((fixnum? val)
-         (set-integer-option s level name val))
-        ((blob? val)
-         (check-error (setsockopt s level name val (blob-size val)) 'set-socket-option!))
-        ((string? val)
-         (check-error (setsockopt s level name val (string-length val)) 'set-socket-option!))
-        (else
-         (##sys#signal-hook #:type-error
-                            'set-socket-option!
-                            "bad option value" val))))
+  (let ((s (if (socket? s) (socket-fileno s) s)))
+    (cond ((boolean? val)
+           (set-boolean-option s level name val))
+          ((fixnum? val)
+           (set-integer-option s level name val))
+          ((blob? val)
+           (check-error (setsockopt s level name val (blob-size val)) 'set-socket-option!))
+          ((string? val)
+           (check-error (setsockopt s level name val (string-length val)) 'set-socket-option!))
+          (else
+           (##sys#signal-hook #:type-error
+                              'set-socket-option!
+                              "bad option value" val)))))
 
 ;; TODO: Rather than preallocated storage buf, perhaps better to
 ;; specify a max length and return a newly allocated (sub)string of that.
@@ -225,7 +231,8 @@
         (if (or (string? buf) (blob? buf))
             (let-location ((sz int))
               (set! sz (number-of-bytes buf))
-              (check-error (getsockopt s level name buf (location sz)) 'get-socket-option!)
+              (let ((s (if (socket? s) (socket-fileno s) s)))
+                (check-error (getsockopt s level name buf (location sz)) 'get-socket-option!))
               buf)
             (##sys#signal-hook #:type-error
                                'get-socket-option!
