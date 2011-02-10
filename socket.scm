@@ -371,39 +371,32 @@ char *skt_strerror(int err) {
 ;; However, the unspecified address may not be useful, as it will return either
 ;; an inet or inet6 address (which may not match the socket family).  To avoid
 ;; this, specify "::" or "0.0.0.0" explicitly.
+;; TODO: Port range should probably be checked.
 (define (inet-address ip service)   ;; Not sure if optional service makes sense.
-  (let ((service (and service (number->string service)))
+  (let ((service (and service
+		      (cond ((and (exact? service) (number->string service)))
+			    (else (network-error "service must be a numeric value or #f" service)))))
 	(passive (if ip 0 AI_PASSIVE)))
-    (and-let* ((ai (getaddrinfo/ai ip service #f #f #f
-				   (+ AI_NUMERICHOST passive))) ;; + AI_NUMERICSERV
-               (saddr (ai->sockaddr ai)))
-      (freeaddrinfo ai)
-      saddr)))
+    (let ((ai (getaddrinfo/ai ip service #f #f #f
+			      (+ AI_NUMERICHOST passive))))  ;; + AI_NUMERICSERV
+      (unless ai
+	(error 'inet-address "invalid internet address" ip service))
+      (let ((saddr (ai->sockaddr ai)))
+	(freeaddrinfo ai)
+	saddr))))
 
 ;; ADDR is either a SOCKADDR object, or an IPv4 or IPv6 string.
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
 ;; Note: Should add AI_NUMERICSERV to getaddrinfo call, but it may not be portable.
-;; Note: service: not mandatory because it is ignored when ADDR is a sockaddr.
 ;; Note: (car (name-information addr flags: ni/numerichost)) ==
 ;;         (sockaddr-address (inet-address addr 0)), so there is some redundancy.
-(define (name-information addr #!key service (flags 0))
+;; (name-information (inet-address "::1" 0))
+(define (name-information saddr #!key (flags 0))
   (define (massage ni)
     (cond ((string->number (cdr ni))
            => (lambda (p) (cons (car ni) p)))
           (else ni)))
-  (cond
-   ((sockaddr? addr)
-    (massage (getnameinfo addr flags)))         ; service ignored
-   (else
-    (let ((port (cond ((not service) #f)
-                      ((integer? service) service)
-                      ((string->number service))
-                      (else (error 'name-information "service must be a numeric value or #f"
-                                   service)))))
-      (let ((saddr (inet-address addr port)))
-        (unless saddr
-          (error 'name-information "invalid internet address" addr port))
-        (massage (getnameinfo saddr flags)))))))
+  (massage (getnameinfo saddr flags)))
 
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
