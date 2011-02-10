@@ -372,15 +372,15 @@ char *skt_strerror(int err) {
 ;; an inet or inet6 address (which may not match the socket family).  To avoid
 ;; this, specify "::" or "0.0.0.0" explicitly.
 ;; TODO: Port range should probably be checked.
-(define (inet-address ip service)
-  (let ((service (and service
-		      (cond ((and (exact? service) (number->string service)))
-			    (else (network-error "service must be a numeric value or #f" service)))))
+(define (inet-address ip port)
+  (let ((port (and port
+		      (cond ((and (exact? port) (number->string port)))
+			    (else (network-error "port must be a numeric value or #f" port)))))
 	(passive (if ip 0 AI_PASSIVE)))
-    (let ((ai (getaddrinfo/ai ip service #f #f #f
+    (let ((ai (getaddrinfo/ai ip port #f #f #f
 			      (+ AI_NUMERICHOST passive))))  ;; + AI_NUMERICSERV
       (unless ai
-	(error 'inet-address "invalid internet address" ip service))
+	(error 'inet-address "invalid internet address" ip port))
       (let ((saddr (ai->sockaddr ai)))
 	(freeaddrinfo ai)
 	saddr))))
