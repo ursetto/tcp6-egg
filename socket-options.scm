@@ -170,7 +170,7 @@
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (let-location ((val int))
       (let ((err (getsockopt/int s level name (location val))))
-        (check-error err 'get-socket-option!)
+        (check-error err 'get-socket-option)
         val))))
 
 (define (set-readonly-option s level name val)  ; don't get a symbol here, only an int -- fixme?
@@ -184,7 +184,7 @@
 ;; (set-socket-option! S ipproto/tcp tcp/nodelay 1)
 ;; (set-socket-option! S ipproto/tcp tcp/nodelay (make-string 4 #\x0))
 ;; (set-socket-option! S sol/socket so/rcvlowat (u32vector->blob/shared (u32vector #x01020304)))
-;; (get-socket-option! S ipproto/tcp tcp/nodelay)
+;; (get-socket-option S ipproto/tcp tcp/nodelay)
 
 ;; complex example
 
@@ -204,7 +204,7 @@
         ((foreign-lambda* int ((scheme-pointer p)) "return(((struct linger *)p)->l_linger);") blob)))
 
 ;; (set-socket-option! S sol/socket so/linger (encode-linger-option 1 100))
-;; (decode-linger-option (get-socket-option! S sol/socket so/linger (make-linger-storage)))
+;; (decode-linger-option (get-socket-option S sol/socket so/linger (make-linger-storage)))
 |#
 
 (define (set-socket-option! s level name val)
@@ -222,23 +222,26 @@
                               'set-socket-option!
                               "bad option value" val)))))
 
-;; TODO: Rather than preallocated storage buf, perhaps better to
-;; specify a max length and return a newly allocated (sub)string of that.
-;; Well, a blob is probably better.
-;; TODO: Also remove ! when done.
-(define (get-socket-option! s level name . storage)
-  (if (null? storage)
+;; Get socket option on socket S at socket level LEVEL with option name NAME.
+;; If len is #f (the default) it assumes the option is an integer value.
+;; Otherwise allocates temporary space of LEN bytes and copies the result into
+;; a fresh blob of the length returned by the getsockopt() call; returns the blob.
+;; If you know the correct length ahead of time, no copy is done.
+;; (get-socket-option s sol/socket so/reuseaddr 1024) => #${04000000}
+;; (get-socket-option s sol/socket so/reuseaddr)      => 4
+(define (get-socket-option s level name #!optional len)
+  (if (not len)
       (get-integer-option s level name)
-      (let ((buf (car storage)))
-        (if (or (string? buf) (blob? buf))
-            (let-location ((sz int))
-              (set! sz (number-of-bytes buf))
-              (let ((s (if (socket? s) (socket-fileno s) s)))
-                (check-error (getsockopt s level name buf (location sz)) 'get-socket-option!))
-              buf)
-            (##sys#signal-hook #:type-error
-                               'get-socket-option!
-                               "bad value container" buf)))))
+      (let ((buf (make-blob len)))
+        (let-location ((sz int len))
+          (let ((s (if (socket? s) (socket-fileno s) s)))
+            (check-error (getsockopt s level name buf (location sz)) 'get-socket-option))
+          (if (= sz len)
+              buf
+              (let ((retbuf (make-blob sz)))
+                ((foreign-lambda void C_memcpy scheme-pointer scheme-pointer int)
+                 retbuf buf sz)
+                retbuf))))))
 
 ;;; socket integers
 
