@@ -1,5 +1,7 @@
 ;;; socket extension
 
+;; FIXME! name-information now requires service arg, which screws up passing just sockaddr
+
 ;;; License
 
 ;; Some code was derived from Chicken core tcp.scm.
@@ -381,10 +383,10 @@ char *skt_strerror(int err) {
 ;; ADDR is either a SOCKADDR object, or an IPv4 or IPv6 string.
 ;; Converts returned port to numeric if possible.  Does not convert 0 to #f though.
 ;; Note: Should add AI_NUMERICSERV to getaddrinfo call, but it may not be portable.
-;; Note: Perhaps service should be mandatory.
+;; Note: service: not mandatory because it is ignored when ADDR is a sockaddr.
 ;; Note: (car (name-information addr flags: ni/numerichost)) ==
-;;         (sockaddr-address (inet-sockaddr addr)), so there is some redundancy.
-(define (name-information addr service #!key (flags 0))
+;;         (sockaddr-address (inet-address addr 0)), so there is some redundancy.
+(define (name-information addr #!key service (flags 0))
   (define (massage ni)
     (cond ((string->number (cdr ni))
            => (lambda (p) (cons (car ni) p)))
