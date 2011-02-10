@@ -359,7 +359,7 @@ char *skt_strerror(int err) {
     (when ai (freeaddrinfo ai))
     addrinfo))
 
-(define (address-information node service #!key family type protocol flags)
+(define (address-information node service #!key family (type sock/stream) protocol flags)
   (let ((service (if (integer? service) (number->string service) service)))
     (getaddrinfo node service family type protocol flags)))
 
