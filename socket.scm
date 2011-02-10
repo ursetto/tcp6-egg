@@ -364,10 +364,16 @@ char *skt_strerror(int err) {
 ;; Constructor for socket address object from IP address string & SERVICE number.
 ;; The usual way to create such an address is via address-information; this is
 ;; a more efficient shortcut.
-;; FIXME: The name is suspect.
-(define (inet-address ip #!optional service)   ;; Not sure if optional service makes sense.
-  (let ((service (and service (number->string service))))
-    (and-let* ((ai (getaddrinfo/ai ip service #f #f #f AI_NUMERICHOST))  ;; + AI_NUMERICSERV
+;; When ip is #f, the socket is considered intended for passive use (bind) and
+;; the unspecified address will be returned.  (Implicitly affects name-information.)
+;; However, the unspecified address may not be useful, as it will return either
+;; an inet or inet6 address (which may not match the socket family).  To avoid
+;; this, specify "::" or "0.0.0.0" explicitly.
+(define (inet-address ip service)   ;; Not sure if optional service makes sense.
+  (let ((service (and service (number->string service)))
+	(passive (if ip 0 AI_PASSIVE)))
+    (and-let* ((ai (getaddrinfo/ai ip service #f #f #f
+				   (+ AI_NUMERICHOST passive))) ;; + AI_NUMERICSERV
                (saddr (ai->sockaddr ai)))
       (freeaddrinfo ai)
       saddr)))
@@ -724,9 +730,11 @@ char *skt_strerror(int err) {
            (e (exn i/o net transient)
               (loop (cdr ais))))))))
 
-;; (socket-bind! s (addrinfo-address (car (address-information "127.0.0.1" service: 9112 socktype: sock/stream flags: ai/passive))))
-;; ... is verbose; perhaps could be streamlined.
-;; However, normal usage would be (socket-bind! s (inet-address "127.0.0.1" 9112)).
+;; (socket-bind! s (addrinfo-address (car (address-information "127.0.0.1" 9112 socktype: sock/stream flags: ai/passive))))
+;; ... is verbose.
+;; Normal usage is (socket-bind! s (inet-address "127.0.0.1" 9112)).
+;; Using (inet-address #f nnn) will bind to the unspecified address, although that
+;; may not match the socket type.
 
 (define (socket-bind! so saddr)
   (define _bind (foreign-lambda int "bind" int scheme-pointer int))
