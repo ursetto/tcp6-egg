@@ -1038,26 +1038,6 @@ char *skt_strerror(int err) {
 
 ;;; socket options
 
-;; FIXME: Temporary for tcp6 egg
-(define (set-socket-reuseaddr! so flag)
-  (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag)) 
-                   "flag = flag ? 1 : 0;
-                    C_return(setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&flag, sizeof(flag)));") 
-                 (socket-fileno so) flag))
-    (network-error/errno 'set-socket-reuseaddr! "error setting SO_REUSEADDR" so)))
-
-;; FIXME: Temporary for tcp6 egg
-(define (set-socket-v6only! so flag)
-  (when (eq? -1 ((foreign-lambda* int ((int socket) (bool flag))
-                   "#ifdef IPV6_V6ONLY\n"
-                   "flag = flag ? 1 : 0;"
-                   "C_return(setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&flag, sizeof(flag)));\n"
-                   "#else\n"
-                   "C_return(0);\n" ;; silently fail
-                   "#endif\n")
-                 (socket-fileno so) flag))
-    (network-error/errno 'set-socket-v6only! "error setting IPV6_V6ONLY" so)))
-
 (include "socket-options.scm")
 
 ;;; ports

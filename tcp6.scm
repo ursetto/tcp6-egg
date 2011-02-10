@@ -55,9 +55,9 @@
 	   (addr (addrinfo-address ai)))
     (let* ((so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
 	   (s (socket-fileno so)))
-      (set-socket-reuseaddr! so #t)
+      (set! (so-reuse-address? so) #t)
       (when (= (addrinfo-family ai) af/inet6)
-        (set-socket-v6only! so (tcp-bind-ipv6-only)))
+        (set! (ipv6-v6-only? so) (tcp-bind-ipv6-only)))
       (socket-bind! so addr)
       so))))
 
