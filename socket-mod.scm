@@ -1,7 +1,7 @@
 (module socket
 (af/inet
- af/inet6 af/unix
- sock/stream sock/dgram sock/raw
+ af/inet6 af/unix af/unspec
+ sock/stream sock/dgram sock/raw ;; sock/seqpacket
  ipproto/tcp ipproto/udp
  ai/canonname ai/numerichost ai/passive
  ni/numerichost ni/numericserv ni/dgram ni/namereqd ni/nofqdn

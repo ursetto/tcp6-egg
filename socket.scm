@@ -115,6 +115,7 @@ char *skt_strerror(int err) {
 # include <sys/socket.h>
 # include <sys/time.h>
 # include <netinet/in.h>
+# include <netinet/tcp.h>        /* only for TCP_* socket options */
 # include <unistd.h>
 # include <netdb.h>
 # include <signal.h>
@@ -139,6 +140,7 @@ char *skt_strerror(int err) {
   ((af/inet AF_INET) AF_INET)
   ((af/inet6 AF_INET6) AF_INET6)
   ((af/unix AF_UNIX) AF_UNIX))
+(define af/unspec AF_UNSPEC)
 (define af/inet AF_INET)
 (define af/inet6 AF_INET6)
 (define af/unix AF_UNIX)
@@ -152,12 +154,13 @@ char *skt_strerror(int err) {
 (define sock/dgram  SOCK_DGRAM)
 (define sock/raw    SOCK_RAW)
 
+;; These are for address-information, not socket options -- so TCP and UDP only.
 (define-foreign-enum-type (protocol-type int)
   (protocol-type->integer integer->protocol-type)
-  ((ipproto/tcp IPPROTO_TCP)  IPPROTO_TCP)
-  ((ipproto/udp IPPROTO_UDP)  IPPROTO_UDP))
-(define ipproto/tcp IPPROTO_TCP)
-(define ipproto/udp IPPROTO_UDP)
+  ((ipproto/tcp _ipproto_tcp)  IPPROTO_TCP)
+  ((ipproto/udp _ipproto_udp)  IPPROTO_UDP))
+(define ipproto/tcp _ipproto_tcp)
+(define ipproto/udp _ipproto_udp)
 
 (define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
 (define-foreign-variable AI_NUMERICHOST int "AI_NUMERICHOST")
@@ -1054,6 +1057,8 @@ char *skt_strerror(int err) {
                    "#endif\n")
                  (socket-fileno so) flag))
     (network-error/errno 'set-socket-v6only! "error setting IPV6_V6ONLY" so)))
+
+(include "socket-options.scm")
 
 ;;; ports
 

@@ -1,94 +1,126 @@
-(declare
- (hide get-boolean-option set-boolean-option
-       get-integer-option set-integer-option
-       set-readonly-option
-       ##sys#check-boolean check-error
-       setsockopt getsockopt setsockopt/int getsockopt/int
-       ))
+;; (declare
+;;  (hide get-boolean-option set-boolean-option
+;;        get-integer-option set-integer-option
+;;        set-readonly-option
+;;        ##sys#check-boolean check-error
+;;        setsockopt getsockopt setsockopt/int getsockopt/int
+;;        ))
 
-(use lolevel)
+;; (use lolevel)
 
-;;; C header glue
+;; ;;; C header glue
 
-#>
-#include <errno.h>
-#ifdef _WIN32
-# if _MSC_VER > 1300
-# include <winsock2.h>
-# include <ws2tcpip.h>
-# else
-# include <winsock.h>
-# endif
-/* Beware: winsock2.h must come BEFORE windows.h */
-# define socklen_t       int
-# define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\
-    getsockopt(socket, level, optname, (char *)optval, optlen)
-#else
-# include <sys/types.h>
-# include <sys/socket.h>
-# include <sys/time.h>
-# include <netinet/in.h>
-# include <netinet/tcp.h>
-# include <unistd.h>
-# include <signal.h>
-# define closesocket     close
-# define INVALID_SOCKET  -1
-# define typecorrect_getsockopt getsockopt
-#endif
+;; #>
+;; #include <errno.h>
+;; #ifdef _WIN32
+;; # if _MSC_VER > 1300
+;; # include <winsock2.h>
+;; # include <ws2tcpip.h>
+;; # else
+;; # include <winsock.h>
+;; # endif
+;; /* Beware: winsock2.h must come BEFORE windows.h */
+;; # define socklen_t       int
+;; # define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\
+;;     getsockopt(socket, level, optname, (char *)optval, optlen)
+;; #else
+;; # include <sys/types.h>
+;; # include <sys/socket.h>
+;; # include <sys/time.h>
+;; # include <netinet/in.h>
+;; # include <netinet/tcp.h>
+;; # include <unistd.h>
+;; # include <signal.h>
+;; # define closesocket     close
+;; # define INVALID_SOCKET  -1
+;; # define typecorrect_getsockopt getsockopt
+;; #endif
 
-#ifndef SD_RECEIVE
-# define SD_RECEIVE      0
-# define SD_SEND         1
-#endif
+;; #ifndef SD_RECEIVE
+;; # define SD_RECEIVE      0
+;; # define SD_SEND         1
+;; #endif
 
-#ifdef ECOS
-#include <sys/sockio.h>
-#endif
+;; #ifdef ECOS
+;; #include <sys/sockio.h>
+;; #endif
 
-<#
+;; <#
 
-(define-foreign-variable errno int "errno")
-(define-foreign-variable strerror c-string "strerror(errno)")
+;; (define-foreign-variable errno int "errno")
+;; (define-foreign-variable strerror c-string "strerror(errno)")
 
 ;;; Local macros
 
+;;(require-library srfi-13) ;;?
+(import-for-syntax srfi-13)
+
+;; (local 'so/reuseaddr) => '_so_reuseaddr
+(define-for-syntax (local s)
+  (string->symbol
+   (string-append "_" (string-translate (symbol->string s) "/" "_"))))
+
 ;; (c-name 'so/reuseaddr) => "SO_REUSEADDR"
 ;; (define-socket-int so/reuseaddr) =>
-;;    (begin (define-foreign-variable _so/reuseaddr "SO_REUSEADDR")
-;;           (define so/reuseaddr _so/reuseaddr))
-(require-for-syntax 'srfi-13)
-(define-for-syntax (local s)
-  (string->symbol (string-append "_" (symbol->string s))))
+;;    (begin (define-foreign-variable _so_reuseaddr "SO_REUSEADDR")
+;;           (define so/reuseaddr _so_reuseaddr))
+(define-syntax define-socket-int
+  (er-macro-transformer
+   (lambda (e r c)
+     (define (c-name sym)
+       (string-translate (string-upcase (symbol->string sym)) "/" "_"))
+     (let ((sym (cadr e))
+           (str (cddr e)))
+       (let ((str (if (pair? str) (car str) (c-name sym))))
+         `(,(r 'begin)
+           (,(r 'define-foreign-variable) ,(local sym) ,(r 'int) ,str)
+           (,(r 'define) ,sym ,(local sym))))))))
 
-(define-macro (define-socket-int sym . str)
-  (define (c-name sym)
-    (string-translate (string-upcase (symbol->string sym)) "/" "_"))
-  (let ((str (if (pair? str) (car str) (c-name sym))))
-    `(begin
-       (define-foreign-variable ,(local sym) int ,str)
-       (define ,sym ,(local sym)))))
+(define-syntax define-socket-ints
+  (er-macro-transformer
+   (lambda (e r c)
+     `(,(r 'begin)
+       ,@(map (lambda (sym)
+                (if (pair? sym)
+                    `(,(r 'define-socket-int) ,(car sym) ,(cadr sym))
+                    `(,(r 'define-socket-int) ,sym)))
+              (cdr e))))))
 
-(define-macro (define-socket-ints . syms)
-  `(begin
-     ,@(map (lambda (sym)
-              (if (pair? sym)
-                  `(define-socket-int ,(car sym) ,(cadr sym))
-                  `(define-socket-int ,sym)))
-           syms)))
+;; (define-socket-option tcp-no-delay ipproto/tcp tcp/nodelay set-int get-int) =>
+;; (begin
+;;   (define tcp-no-delay
+;;     (getter-with-setter
+;;       (lambda (s) (get-int s _ipproto_tcp _tcp_nodelay))
+;;       (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
+;;   (define tcp-no-delay-set!
+;;     (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
 
-(define-macro (define-socket-option name level optname set get)
-  (define (setter-symbol s)
-    (string->symbol (string-append (symbol->string s) "-set!")))
-  `(begin
-     (define ,name (getter-with-setter (lambda (s) (,get s ,(local level) ,(local optname)))
-                                       (lambda (s v) (,set s ,(local level) ,(local optname) v))))
-     (define ,(setter-symbol name) (lambda (s v) (,set s ,(local level) ,(local optname) v)))))
+(define-syntax define-socket-option
+  (er-macro-transformer
+   (lambda (e r c)
+     (define (setter-symbol s)
+       (string->symbol (string-append (symbol->string s) "-set!")))
+     (let ((name (cadr e))
+           (level (caddr e))
+           (optname (cadddr e))
+           (set (car (cddddr e)))
+           (get (cadr (cddddr e))))
+       `(,(r 'begin)
+          (,(r 'define) ,name
+           (getter-with-setter (,(r 'lambda) (s) (,get s ,(local level) ,(local optname)))
+                               (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v))))
+          (,(r 'define) ,(setter-symbol name)
+           (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v))))))))
 
-(define-macro (define-boolean-option name level optname)
-  `(define-socket-option ,name ,level ,optname set-boolean-option get-boolean-option))
+(define-syntax define-boolean-option
+  (syntax-rules ()
+    ((_ name level optname)
+     (define-socket-option name level optname set-boolean-option get-boolean-option))))
 
-(define-macro (define-integer-option name level optname)
-  `(define-socket-option ,name ,level ,optname set-integer-option get-integer-option))
+(define-syntax define-integer-option
+  (syntax-rules ()
+    ((_ name level optname)
+     (define-socket-option name level optname set-integer-option get-integer-option))))
 
 ;;; FFI
 
@@ -110,10 +142,11 @@
     (##sys#signal-hook #:type-error
                        (and (pair? y) (car y))
                        "bad argument type: not a boolean" x)))
-(define (check-error err where)
-  (when (not (zero? err))
-    (##sys#update-errno)        
-    (##sys#signal-hook #:network-error where strerror)))
+(define-inline (check-error err where)
+  (let ((no errno))
+    (when (fx= -1 err)
+      (##sys#update-errno)
+      (##sys#signal-hook #:network-error where (strerror no)))))
 
 (define (set-integer-option s level name val)
   (##sys#check-exact val 'set-socket-option!)
@@ -125,7 +158,7 @@
   (##sys#check-boolean val 'set-socket-option!)
   (set-integer-option s level name (if val 1 0)))
 (define (get-boolean-option s level name)
-  (not (zero? (get-integer-option s level name))))
+  (not (= 0 (get-integer-option s level name))))
 
 (define (get-integer-option s level name)
   (let-location ((val int))
@@ -181,6 +214,10 @@
                             'set-socket-option!
                             "bad option value" val))))
 
+;; TODO: Rather than preallocated storage buf, perhaps better to
+;; specify a max length and return a newly allocated (sub)string of that.
+;; Well, a blob is probably better.
+;; TODO: Also remove ! when done.
 (define (get-socket-option! s level name . storage)
   (if (null? storage)
       (get-integer-option s level name)
@@ -198,95 +235,50 @@
 
 (define-socket-ints
 ;; socket options
-  so/reuseaddr
-  so/debug 
-  so/acceptconn
-  so/keepalive
-  so/dontroute
-  so/broadcast
-; so/useloopback
-  so/linger
-  so/oobinline
-; so/reuseport
-; so/timestamp  
-  so/sndbuf
-  so/rcvbuf
-  so/sndlowat
-  so/rcvlowat
-  so/sndtimeo
-  so/rcvtimeo
-  so/error
-  so/type
+  so/reuseaddr so/debug so/acceptconn so/keepalive so/dontroute
+  so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
+  so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
+; so/useloopback so/reuseport so/timestamp  
 
 ;; tcp options
   tcp/nodelay
-; tcp/maxseg
-; tcp/nopush
-; tcp/noopt
-; tcp/keepalive
+; tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
 ;; ip options
-  ip/options
-  ip/hdrincl
-  ip/tos
-  ip/ttl
-  ip/recvopts
-  ip/recvretopts
+  ip/options ip/hdrincl ip/tos ip/ttl ip/recvopts ip/recvretopts ip/retopts
 ; ip/recvdstaddr
-  ip/retopts
   (ip/multicast-if "IP_MULTICAST_IF")
   (ip/multicast-ttl "IP_MULTICAST_TTL")
   (ip/multicast-loop "IP_MULTICAST_LOOP")
   (ip/add-membership "IP_ADD_MEMBERSHIP")
   (ip/drop-membership "IP_DROP_MEMBERSHIP")
-  
-;; socket types
-  sock/stream
-  sock/dgram
-  sock/raw
-  sock/seqpacket
+
+;; ipv6 options
+  ipv6/v6only
 
 ;; socket levels
-  sol/socket
-  ipproto/ip
-  ipproto/ipv6
-  ipproto/tcp
-  ipproto/icmp
-  ipproto/udp
-
-;; address families
-  af/unspec
-  af/unix
-  af/local
-  af/inet
-  af/inet6
-
-;; protocol families
-  pf/unspec
-  pf/local
-  pf/unix
-  pf/inet
-  pf/inet6
+  sol/socket ipproto/ip ipproto/ipv6 ipproto/icmp
+; ipproto/tcp ipproto/udp            ;; already provided in socket.scm
 )
 
 ;;; socket-level options
 
-(define-boolean-option socket-reuse-address sol/socket so/reuseaddr)
-(define-boolean-option socket-debug sol/socket so/debug)
-(define-socket-option  socket-accept-connections sol/socket so/acceptconn set-readonly-option get-boolean-option)
-(define-boolean-option socket-keep-alive sol/socket so/keepalive)
-(define-boolean-option socket-dont-route sol/socket so/dontroute)
-(define-boolean-option socket-broadcast sol/socket so/broadcast)
-;(define-socket-option socket-linger sol/socket so/linger set-linger-option get-linger-option)
-(define-boolean-option socket-oob-inline sol/socket so/oobinline)
-(define-integer-option socket-send-buffer sol/socket so/sndbuf)
-(define-integer-option socket-receive-buffer sol/socket so/rcvbuf)
-(define-integer-option socket-send-low-water sol/socket so/sndlowat)
-(define-integer-option socket-receive-low-water sol/socket so/rcvlowat)
-;(define-socket-option socket-receive-timeout sol/socket so/rcvtimeo set-timeval-option get-timeval-option)
-;(define-socket-option socket-send-timeout sol/socket so/sndtimeo set-timeval-option get-timeval-option)
-(define-socket-option  socket-error sol/socket so/error set-readonly-option get-integer-option)
-(define-socket-option  socket-type sol/socket so/type set-readonly-option get-integer-option)
+(define-boolean-option so-reuse-address sol/socket so/reuseaddr)
+(define-boolean-option so-debug sol/socket so/debug)
+(define-socket-option  so-accept-connections sol/socket so/acceptconn set-readonly-option get-boolean-option)
+(define-boolean-option so-keep-alive sol/socket so/keepalive)
+(define-boolean-option so-dont-route sol/socket so/dontroute)
+(define-boolean-option so-broadcast sol/socket so/broadcast)
+;(define-socket-option so-linger sol/socket so/linger set-linger-option get-linger-option)
+(define-boolean-option so-oob-inline sol/socket so/oobinline)
+(define-integer-option so-send-buffer sol/socket so/sndbuf)
+(define-integer-option so-receive-buffer sol/socket so/rcvbuf)
+(define-integer-option so-send-low-water sol/socket so/sndlowat)
+(define-integer-option so-receive-low-water sol/socket so/rcvlowat)
+;(define-socket-option so-receive-timeout sol/socket so/rcvtimeo set-timeval-option get-timeval-option)
+;(define-socket-option so-send-timeout sol/socket so/sndtimeo set-timeval-option get-timeval-option)
+(define-socket-option  so-error sol/socket so/error set-readonly-option get-integer-option)
+(define-socket-option  so-type sol/socket so/type set-readonly-option get-integer-option)
 
 ;;; TCP options
 
@@ -303,3 +295,5 @@
 (define-boolean-option ip-header-included ipproto/ip ip/hdrincl)
 (define-integer-option ip-type-of-service ipproto/ip ip/tos)
 (define-integer-option ip-time-to-live ipproto/ip ip/ttl)
+
+(define-boolean-option ipv6-v6-only ipproto/ipv6 ipv6/v6only)
