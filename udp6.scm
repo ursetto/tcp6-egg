@@ -60,7 +60,7 @@
 (define (udp-bound? s)                     ;; does not check if sock/dgram
   (and (socket-name s)))
 (define (udp-connected? s)                 ;; does not check if sock/dgram
-  (and (socket-peer s)))
+  (and (socket-peer-name s)))
 
 ;;; udp-open-socket [family] : -> udp-socket
 (define (udp-open-socket #!optional (family 'inet))
@@ -99,13 +99,13 @@
 ;; Host may be a string like host:port or [host]:port, in which case PORT should be #f.
 (define (udp-connect! so host #!optional port)
   (unless port
-    (set-values! (host port) (parse-inet-address hoststr))
+    (set!-values (host port) (parse-inet-address host))
     (unless port
       (udp-error 'udp-connect! "no port specified")))
   (let ((ais (address-information host port family: (socket-family so)
                                   type: sock/dgram)))
     (when (null? ais)
-      (udp-error 'udp-connect! "node and/or service lookup failed"))
+      (udp-error 'udp-connect! "node and/or service lookup failed" so host port))
     (socket-connect! so (addrinfo-address (car ais)))))
 
 ;; Maybe add udp-connect and/or udp-connect/ai

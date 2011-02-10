@@ -5,6 +5,8 @@
    ;; udp-set-multicast-interface udp-join-multicast-group
    )
 
+(import scheme (only chicken use include))
+(use socket)
 (include "udp6.scm")
 
 )

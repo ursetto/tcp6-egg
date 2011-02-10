@@ -1,0 +1,8 @@
+;; -*- scheme -*-
+(compile -s -O2 -d1 tcp6-mod.scm -o tcp6.so -j tcp6)
+(compile -s -d0 tcp6.import.scm) 
+
+(install-extension
+ 'tcp6
+ '("tcp6.so" "tcp6.import.so")
+ '((version "0.1")))
