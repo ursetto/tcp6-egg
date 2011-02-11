@@ -193,11 +193,13 @@ char *skt_strerror(int err) {
 (define-record sockaddr family blob)
 
 (define (sa->sockaddr sa len)    ;; sa -- c-pointer; len -- length of sockaddr struct
-  (make-sockaddr (sa-family sa)
-                 (let ((b (make-blob len)))
-                   ((foreign-lambda void C_memcpy scheme-pointer c-pointer int)
-                    b sa len)
-                   b)))
+  (if (= len 0)     ;; for example, socket-receive-from! returns 0 len on connection-oriented socket
+      #f
+      (make-sockaddr (sa-family sa)  ;; Assume when len > 0, it at least includes the family.
+		     (let ((b (make-blob len)))
+		       ((foreign-lambda void C_memcpy scheme-pointer c-pointer int)
+			b sa len)
+		       b))))
 
 (define (sockaddr-len A)
   (blob-size (sockaddr-blob A)))
