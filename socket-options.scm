@@ -154,14 +154,14 @@
       (##sys#signal-hook #:network-error where (strerror no)))))
 
 (define (set-integer-option s level name val)
-  (##sys#check-exact val 'set-socket-option!)
+  (##sys#check-exact val 'set-socket-option)
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (let ((err (setsockopt/int s level name val)))
-      (check-error err 'set-socket-option!)
+      (check-error err 'set-socket-option)
       (void))))
 
 (define (set-boolean-option s level name val)
-  (##sys#check-boolean val 'set-socket-option!)
+  (##sys#check-boolean val 'set-socket-option)
   (set-integer-option s level name (if val 1 0)))
 (define (get-boolean-option s level name)
   (not (= 0 (get-integer-option s level name))))
@@ -174,16 +174,16 @@
         val))))
 
 (define (set-readonly-option s level name val)  ; don't get a symbol here, only an int -- fixme?
-  (error 'set-socket-option! "socket option is read-only"))
+  (error 'set-socket-option "socket option is read-only"))
 
 ;;; generic lowlevel interface
 
 ;; This interface is likely to change or go away completely.  Complex manipulation
 ;; might be easier done in C.
 
-;; (set-socket-option! S ipproto/tcp tcp/nodelay 1)
-;; (set-socket-option! S ipproto/tcp tcp/nodelay (make-string 4 #\x0))
-;; (set-socket-option! S sol/socket so/rcvlowat (u32vector->blob/shared (u32vector #x01020304)))
+;; (set-socket-option S ipproto/tcp tcp/nodelay 1)
+;; (set-socket-option S ipproto/tcp tcp/nodelay (make-string 4 #\x0))
+;; (set-socket-option S sol/socket so/rcvlowat (u32vector->blob/shared (u32vector #x01020304)))
 ;; (get-socket-option S ipproto/tcp tcp/nodelay)
 
 ;; complex example
@@ -203,23 +203,23 @@
   (list ((foreign-lambda* int ((scheme-pointer p)) "return(((struct linger *)p)->l_onoff);") blob)
         ((foreign-lambda* int ((scheme-pointer p)) "return(((struct linger *)p)->l_linger);") blob)))
 
-;; (set-socket-option! S sol/socket so/linger (encode-linger-option 1 100))
+;; (set-socket-option S sol/socket so/linger (encode-linger-option 1 100))
 ;; (decode-linger-option (get-socket-option S sol/socket so/linger (make-linger-storage)))
 |#
 
-(define (set-socket-option! s level name val)
+(define (set-socket-option s level name val)
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (cond ((boolean? val)
            (set-boolean-option s level name val))
           ((fixnum? val)
            (set-integer-option s level name val))
           ((blob? val)
-           (check-error (setsockopt s level name val (blob-size val)) 'set-socket-option!))
+           (check-error (setsockopt s level name val (blob-size val)) 'set-socket-option))
           ((string? val)
-           (check-error (setsockopt s level name val (string-length val)) 'set-socket-option!))
+           (check-error (setsockopt s level name val (string-length val)) 'set-socket-option))
           (else
            (##sys#signal-hook #:type-error
-                              'set-socket-option!
+                              'set-socket-option
                               "bad option value" val)))))
 
 ;; Get socket option on socket S at socket level LEVEL with option name NAME.

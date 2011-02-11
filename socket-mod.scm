@@ -47,7 +47,7 @@
  ip/multicast-if ip/multicast-ttl ip/multicast-loop ip/add-membership ip/drop-membership
  ipv6/v6only
  sol/socket ipproto/ip ipproto/ipv6 ipproto/icmp
- get-socket-option set-socket-option!
+ get-socket-option set-socket-option
  so-reuse-address? so-debug? so-error so-type
  so-accept-connections? so-keep-alive? so-dont-route? so-broadcast? so-oob-inline?
  so-send-buffer so-receive-buffer so-send-low-water so-receive-low-water

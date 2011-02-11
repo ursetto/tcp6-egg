@@ -655,7 +655,7 @@ types such as integer or boolean.  No checking is done that the passed
 option value is appropriate, as that's the job of the high-level
 interface.
 
-<procedure>(set-socket-option! s level name val)</procedure>
+<procedure>(set-socket-option s level name val)</procedure>
 
 Set the value of option {{NAME}} at socket level {{LEVEL}} on socket {{S}} to {{VAL}}.
 {{VAL}} may be a fixnum or a boolean.  It may also be a blob or a string; if so, the raw
@@ -666,9 +666,9 @@ not generally safe to pack raw data yourself into a blob or a SRFI-4 vector.  In
 should treat the blob contents as a C struct.  See the longer example down the page
 for more.
 
- (set-socket-option! S ipproto/tcp tcp/nodelay 1)
- (set-socket-option! S ipproto/tcp tcp/nodelay (make-string 4 #\x0))
- (set-socket-option! S sol/socket so/rcvlowat (u32vector->blob/shared (u32vector #x01020304)))
+ (set-socket-option S ipproto/tcp tcp/nodelay 1)
+ (set-socket-option S ipproto/tcp tcp/nodelay (make-string 4 #\x0))
+ (set-socket-option S sol/socket so/rcvlowat (u32vector->blob/shared (u32vector #x01020304)))
 
 <procedure>(get-socket-option s level name #!optional (len #f))</procedure>
 
@@ -685,9 +685,9 @@ expect a boolean flag, assume zero means {{#f}} and non-zero means
 integer values from those you put in; that's an implementation detail.
 You can only rely on true being some non-zero value.
 
- (get-socket-option! S ipproto/tcp tcp/nodelay)     ; => 8, perhaps, meaning #t
- (get-socket-option! S ipproto/tcp tcp/nodelay 64)  ; => #${08000000}
- (get-socket-option! S ipproto/tcp tcp/nodelay 4)   ; => #${08000000}
+ (get-socket-option S ipproto/tcp tcp/nodelay)     ; => 8, perhaps, meaning #t
+ (get-socket-option S ipproto/tcp tcp/nodelay 64)  ; => #${08000000}
+ (get-socket-option S ipproto/tcp tcp/nodelay 4)   ; => #${08000000}
 
 === Socket option constants
 
@@ -718,14 +718,14 @@ Not every possible value is currently available.
 <constant>so/error</constant><br>
 <constant>so/type</constant><br>
 
-Socket-level socket options for use with {{set-socket-option!}} and
+Socket-level socket options for use with {{set-socket-option}} and
 {{get-socket-option}} at level {{sol/socket}}.
 
 ==== TCP-level constants
 
 <constant>tcp/nodelay</constant><br>
 
-TCP-level socket options for use with {{set-socket-option!}} and
+TCP-level socket options for use with {{set-socket-option}} and
 {{get-socket-option}} at level {{ipproto/tcp}}.
 
 ==== IP-level constants
@@ -743,7 +743,7 @@ TCP-level socket options for use with {{set-socket-option!}} and
 <constant>ip/add-membership</constant><br>
 <constant>ip/drop-membership</constant><br>
 
-IP-level socket options for use with {{set-socket-option!}} and
+IP-level socket options for use with {{set-socket-option}} and
 {{get-socket-option}} at level {{ipproto/ip}}.
 
 ==== Socket and protocol levels
@@ -755,7 +755,7 @@ IP-level socket options for use with {{set-socket-option!}} and
 <constant>ipproto/icmp</constant><br>
 <constant>ipproto/udp</constant><br>
 
-Socket level constants, for use with {{set-socket-option!}} and {{get-socket-option}}.
+Socket level constants, for use with {{set-socket-option}} and {{get-socket-option}}.
 
 === SO_LINGER lowlevel example
 
@@ -784,7 +784,7 @@ have a high-level interface created for it instead.
          ((foreign-lambda* int ((scheme-pointer p)) 
           "return(((struct linger *)p)->l_linger);") blob)))
 
- (set-socket-option! S sol/socket so/linger (encode-linger-option #t 100))
+ (set-socket-option S sol/socket so/linger (encode-linger-option #t 100))
  (decode-linger-option 
   (get-socket-option S sol/socket so/linger _linger_size))
     ; => (#t 100)
