@@ -17,9 +17,9 @@
 
  socket-connect-timeout socket-receive-timeout socket-send-timeout socket-accept-timeout
  socket socket-fileno socket-family socket-type socket-protocol socket?
- socket-connect! socket-connect/ai
- socket-bind!
- socket-listen!
+ socket-connect socket-connect/ai
+ socket-bind
+ socket-listen
  socket-accept socket-accept-ready?
  socket-shutdown shut/rd shut/wr shut/rdwr
  socket-close
@@ -33,7 +33,7 @@
  ;; ports
  socket-i/o-ports
  socket-i/o-port->socket
- socket-abandon-port!
+ socket-abandon-port
 
  ;; misc
  parse-inet-address

@@ -646,7 +646,7 @@ char *skt_strerror(int err) {
 ;; Returns a special "transient" error (exn i/o net transient) if connection failure
 ;; was due to refusal, network down, etc.; in which case, the same or another
 ;; address could be tried later. (The socket is still closed, though.)
-(define (socket-connect! so saddr)
+(define (socket-connect so saddr)
   (define _connect (foreign-lambda int "connect" int scheme-pointer int))
   (define (refused? err)
     (or (eq? err _econnrefused) (eq? err _etimedout)
@@ -654,7 +654,7 @@ char *skt_strerror(int err) {
   (let ((s (socket-fileno so))
         (timeout (socket-connect-timeout)))
     (unless (_make_socket_nonblocking s)
-      (network-error/errno 'socket-connect! "unable to set socket to non-blocking" so))
+      (network-error/errno 'socket-connect "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
       (let ((err errno))
         (if (or (eq? err _einprogress)
@@ -666,19 +666,19 @@ char *skt_strerror(int err) {
                   (let loop ((n 0))
                     (let ((f (select-for-write-or-except s)))
                       (cond ((eq? f -1)
-                             (network-error/errno 'socket-connect! "select failed" so))
+                             (network-error/errno 'socket-connect "select failed" so))
                             ((eq? f 0)
                              (if (wait so n)
                                  (loop (+ n 1))
-                                 (socket-timeout-error 'socket-connect! timeout so)))
+                                 (socket-timeout-error 'socket-connect timeout so)))
                             ;; else f=1, fall through
                             )))))
                (else  ;; POSIX--connect failure returned in writefds
                 (let ((f (select-for-write s)))  ;; May be ready immediately; don't reschedule.
                   (cond ((eq? f -1)
-                         (network-error/errno 'socket-connect! "select failed" so))
+                         (network-error/errno 'socket-connect "select failed" so))
                         ((eq? f 0)
-                         (block-for-timeout! 'socket-connect! timeout s #:output
+                         (block-for-timeout! 'socket-connect timeout s #:output
                                              (lambda () (_close_socket s))))
                         ;; else f=1, fall through
                         ))))
@@ -688,14 +688,14 @@ char *skt_strerror(int err) {
                           ((if (refused? err)
                                transient-network-error/errno*
                                network-error/errno*)
-                           'socket-connect! err "cannot initiate connection"
+                           'socket-connect err "cannot initiate connection"
                            so saddr)))))
             (begin
               (_close_socket s)
               ((if (refused? err)
                    transient-network-error/errno*
                    network-error/errno*)
-               'socket-connect! err "cannot initiate connection" so saddr)))))
+               'socket-connect err "cannot initiate connection" so saddr)))))
     ;; perhaps socket address should be stored in socket object
     (void)))
 
@@ -719,33 +719,33 @@ char *skt_strerror(int err) {
            (addr (addrinfo-address ai))
            (so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0)))
       (if (null? (cdr ais))
-          (begin (socket-connect! so addr) so)
+          (begin (socket-connect so addr) so)
           (condition-case
-           (begin (socket-connect! so addr) so)
+           (begin (socket-connect so addr) so)
            (e (exn i/o net timeout)
               (loop (cdr ais)))
            (e (exn i/o net transient)
               (loop (cdr ais))))))))
 
-;; (socket-bind! s (addrinfo-address (car (address-information "127.0.0.1" 9112 socktype: sock/stream flags: ai/passive))))
+;; (socket-bind s (addrinfo-address (car (address-information "127.0.0.1" 9112 socktype: sock/stream flags: ai/passive))))
 ;; ... is verbose.
-;; Normal usage is (socket-bind! s (inet-address "127.0.0.1" 9112)).
+;; Normal usage is (socket-bind s (inet-address "127.0.0.1" 9112)).
 ;; Using (inet-address #f nnn) will bind to the unspecified address, although that
 ;; may not match the socket type.
 
-(define (socket-bind! so saddr)
+(define (socket-bind so saddr)
   (define _bind (foreign-lambda int "bind" int scheme-pointer int))
   (let ((b (_bind (socket-fileno so) (sockaddr-blob saddr) (sockaddr-len saddr))))
     (if (eq? -1 b)
-        (network-error/errno 'socket-bind! "cannot bind to socket" so saddr)
+        (network-error/errno 'socket-bind "cannot bind to socket" so saddr)
         (void))))
 
 ;; Listening on datagram socket throws an OS error.
-(define (socket-listen! so backlog)
+(define (socket-listen so backlog)
   (define _listen (foreign-lambda int "listen" int int))
   (let ((l (_listen (socket-fileno so) backlog)))
     (when (eq? -1 l)
-      (network-error/errno 'socket-listen! "cannot listen on socket" so))))
+      (network-error/errno 'socket-listen "cannot listen on socket" so))))
 
 (define (socket-close so)
   (let ((s (socket-fileno so)))
@@ -1051,7 +1051,7 @@ char *skt_strerror(int err) {
 ;;; ports
 
 (define-inline (socket-port-data p)
-  (##sys#check-port p 'socket-abandon-port!)
+  (##sys#check-port p 'socket-abandon-port)
   (unless (eq? (##sys#slot p 7)
 	       'socket6)            ;; port data has no header (right now); use port type id
     (error 'socket-port-data "argument is not a socket port" p))
@@ -1237,7 +1237,7 @@ char *skt_strerror(int err) {
 	(##sys#set-port-data! out data)
 	(values in out) ) ) ) 
 
-(define (socket-abandon-port! p)
+(define (socket-abandon-port p)
   (let ((d (socket-port-data p)))
     (if (input-port? p)
 	(##sys#setislot d 1 #t)

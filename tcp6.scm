@@ -58,7 +58,7 @@
       (set! (so-reuse-address? so) #t)
       (when (= (addrinfo-family ai) af/inet6)
         (set! (ipv6-v6-only? so) (tcp-bind-ipv6-only)))
-      (socket-bind! so addr)
+      (socket-bind so addr)
       so))))
 
 (define-constant default-backlog 10)
@@ -70,7 +70,7 @@
 
 (define (tcp-listen port #!optional (w default-backlog) host)
   (let ((so (bind-tcp-socket port host)))
-    (socket-listen! so w)
+    (socket-listen so w)
     (make-tcp6-listener so)))
 
 (define (tcp-listener-fileno tcpl)
@@ -154,7 +154,7 @@
   (sockaddr-port (socket-name (tcp-listener-socket tcpl))))
 
 (define (tcp-abandon-port p)
-  (socket-abandon-port! p))
+  (socket-abandon-port p))
 
 ;;; notes
 

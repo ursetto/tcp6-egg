@@ -129,7 +129,7 @@ idea to specify which unspecified address (yes, really) you mean --
 Looks up node name and service name and translates them to numeric
 values.  Returns a list of {{addrinfo}} objects, each of which contains
 a socket address ({{sockaddr}} object) suitable for use in socket calls
-such as {{socket-bind!}} and {{socket-connect!}}.
+such as {{socket-bind}} and {{socket-connect}}.
 
 NODE is either a node name (string) or IP address (string).
 SERVICE may be a string representing a service name or port number, or
@@ -249,10 +249,10 @@ Examples:
 
 === Setup and teardown
 
-<procedure>(socket-connect! so saddr)</procedure><br>
+<procedure>(socket-connect so saddr)</procedure><br>
 <procedure>(socket-connect/ai ais)</procedure><br>
 
-{{socket-connect!}} connects to the remote socket address SADDR over
+{{socket-connect}} connects to the remote socket address SADDR over
 the socket SO.  Upon completion, SO will be connected; on connection
 failure an error is thrown.  The return value is unspecified.  This is
 a non-blocking operation; other SRFI-18 threads can continue to run.
@@ -276,11 +276,11 @@ the appropriate family and type.
 Examples:
   ;; Connect to localhost:22 over IPv4.
   (define so (socket af/inet sock/stream))
-  (socket-connect! so (inet-address "127.0.0.1" 22))
+  (socket-connect so (inet-address "127.0.0.1" 22))
 
   ;; Connect to localhost:22 over IPv6.
   (define so (socket af/inet6 sock/stream))
-  (socket-connect! so (inet-address "::1" 22))
+  (socket-connect so (inet-address "::1" 22))
 
   ;; Connect to localhost:22 over IPv4 and return the connected socket.
   (socket-connect/ai
@@ -301,26 +301,26 @@ Examples:
   ; => #<sockaddr "[127.0.0.1]:22">   ;; If listening on 127.0.0.1 only
   ; => error: connection refused      ;; If ssh isn't running
 
-<procedure>(socket-bind! so saddr)</procedure>
+<procedure>(socket-bind so saddr)</procedure>
 
 Binds socket SO to socket address SADDR.  The return value is unspecified.
 
  ; Bind to the IPv4 unspecified address on port 8000.
  (define so (socket af/inet sock/stream))
- (socket-bind! so (inet-address "0.0.0.0" 8000))
+ (socket-bind so (inet-address "0.0.0.0" 8000))
 
  ; Bind to the IPv6 unspecified address on port 8000.  This may also
  ; allow IPv4 connections, depending on your system settings. 
  (define so (socket af/inet6 sock/stream))
- (socket-bind! so (inet-address "::" 8000))
+ (socket-bind so (inet-address "::" 8000))
 
  ; Bind to the IPv6 unspecified address on port 8000, limiting
  ; connections to IPv6 only.
  (define so (socket af/inet6 sock/stream))
  (set! (ipv6-v6-only? so) #t)
- (socket-bind! so (inet-address "::" 8000))
+ (socket-bind so (inet-address "::" 8000))
 
-<procedure>(socket-listen! so backlog)</procedure>
+<procedure>(socket-listen so backlog)</procedure>
 
 Listen for incoming connections on socket SO, with a connection queue
 of integer length BACKLOG.   This call is only valid for 
@@ -379,9 +379,9 @@ to describe a socket address.
 
 Return a {{sockaddr}} object representing the address of the remote
 endpoint of socket SO.  If no connection exists, returns {{#f}}.  This
-can be used after {{socket-connect!}} or on a socket returned by
+can be used after {{socket-connect}} or on a socket returned by
 {{socket-accept}}.  Note that this also works with UDP "connections"
-made with {{socket-connect!}}.
+made with {{socket-connect}}.
 
 The procedure name is derived from getpeername(), hence the use of "name"
 to describe a socket address.  
@@ -534,7 +534,7 @@ there you can obtain a file descriptor with {{socket-fileno}}.  Note
 that {{port->fileno}} from [[/man/4/Unit posix|posix]] does not
 operate correctly on the socket ports created by this extension.
 
-<procedure>(socket-abandon-port! p)</procedure>
+<procedure>(socket-abandon-port p)</procedure>
 
 Marks the socket input or output port P as abandoned.  Normally, when
 an socket input port is closed the read side of the connection is shut

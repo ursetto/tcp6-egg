@@ -83,7 +83,7 @@
       (udp-error 'udp-bind! "node or service lookup failed" host port))
     (let* ((ai (car ais))
            (addr (addrinfo-address ai)))
-      (socket-bind! so addr))))
+      (socket-bind so addr))))
 
 (define (udp-bound-port so)
   (let ((addr (socket-name so)))
@@ -106,7 +106,7 @@
                                   type: sock/dgram)))
     (when (null? ais)
       (udp-error 'udp-connect! "node and/or service lookup failed" so host port))
-    (socket-connect! so (addrinfo-address (car ais)))))
+    (socket-connect so (addrinfo-address (car ais)))))
 
 ;; Maybe add udp-connect and/or udp-connect/ai
 
