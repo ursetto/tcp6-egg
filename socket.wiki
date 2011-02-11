@@ -343,7 +343,7 @@ to be accepted, so you can avoid blocking the current thread.
 However, if a peer resets his connection between your testing and
 accepting, the accept may block nonetheless.
 
-<procedure>(socket-shutdown! so how)</procedure>
+<procedure>(socket-shutdown so how)</procedure>
 <constant>shut/rd</constant>
 <constant>shut/wr</constant>
 <constant>shut/rdwr</constant>
@@ -359,7 +359,7 @@ so calling this manually is not often necessary.  One usage example
 is using {{shut/wr}} to inform a server you have finished transmitting,
 while allowing it to continue sending to you.
 
-<procedure>(socket-close! so)</procedure>
+<procedure>(socket-close so)</procedure>
 
 Close socket SO.  If a connection was established, the socket is shut
 down gracefully.

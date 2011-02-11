@@ -77,7 +77,7 @@
   (socket-fileno (tcp-listener-socket tcpl)))
 
 (define (tcp-close tcpl)
-  (socket-close! (tcp-listener-socket tcpl)))
+  (socket-close (tcp-listener-socket tcpl)))
 
 (define-constant +input-buffer-size+ 1024)
 (define-constant +output-chunk-size+ 8192)

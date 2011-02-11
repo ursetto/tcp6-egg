@@ -747,10 +747,10 @@ char *skt_strerror(int err) {
     (when (eq? -1 l)
       (network-error/errno 'socket-listen! "cannot listen on socket" so))))
 
-(define (socket-close! so)
+(define (socket-close so)
   (let ((s (socket-fileno so)))
     (when (fx= -1 (_close_socket s))
-      (network-error/errno 'socket-close! "could not close socket" so))))
+      (network-error/errno 'socket-close "could not close socket" so))))
 
 ;; Returns a socket object representing the accepted connection.
 ;; Does not currently return the socket address of the remote, although it could;
@@ -984,12 +984,12 @@ char *skt_strerror(int err) {
 
 ;; Shutdown socket.  If socket is not connected, silently ignore the error, because
 ;; the peer may have already initiated shutdown.  That behavior should perhaps be configurable.
-(define (socket-shutdown! so how)  ;; how: shut/rd, shut/wr, shut/rdwr
+(define (socket-shutdown so how)  ;; how: shut/rd, shut/wr, shut/rdwr
   (define _shutdown (foreign-lambda int "shutdown" int int))
   (when (eq? -1 (_shutdown (socket-fileno so) how))
     (let ((err errno))
       (unless (eq? err _enotconn)
-        (network-error/errno* 'socket-shutdown! err "unable to shutdown socket" so how))))
+        (network-error/errno* 'socket-shutdown err "unable to shutdown socket" so how))))
   (void))
 
 ;; Return #f for unbound socket.  On Windows, must test WSAEINVAL.
@@ -1103,9 +1103,9 @@ char *skt_strerror(int err) {
 		 (unless iclosed
 		   (set! iclosed #t)
 		   (unless (%socket-port-data-input-abandoned? data)       ;; Skip this for dgram?
-		     (socket-shutdown! so shut/rd))  ;; Must not error if peer has shutdown.
+		     (socket-shutdown so shut/rd))  ;; Must not error if peer has shutdown.
 		   (when oclosed
-		     (socket-close! so))))
+		     (socket-close so))))
 	       (lambda ()
 		 (when (fx>= bufindex buflen)
 		   (read-input))
@@ -1221,9 +1221,9 @@ char *skt_strerror(int err) {
                    ;; Note some odd closesocket() behavior with discarded output at:
                    ;; http://msdn.microsoft.com/en-us/library/ms738547 (v=vs.85).aspx
 		   (unless (%socket-port-data-output-abandoned? data)
-		     (socket-shutdown! so shut/wr))
+		     (socket-shutdown so shut/wr))
 		   (when iclosed
-		     (socket-close! so))))
+		     (socket-close so))))
 	       (and outbuf
 		    (lambda ()
 		      (when (fx> outbufindex 0)

@@ -146,6 +146,6 @@
 ;;; udp-close-socket : udp-socket -> bool
 ;;; close a socket.
 (define (udp-close-socket so)
-  (socket-close! so))
+  (socket-close so))
 
 
