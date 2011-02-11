@@ -594,7 +594,7 @@ char *skt_strerror(int err) {
            #;(non-nil (integer->protocol-type (socket-protocol s)) (socket-protocol s))
            ))
 
-(define (socket family socktype protocol)
+(define (socket family socktype #!optional (protocol 0))
   (define _socket (foreign-lambda int "socket" int int int))
   (let ((s (_socket family socktype protocol)))
     (when (eq? _invalid_socket s)
@@ -812,7 +812,9 @@ char *skt_strerror(int err) {
 (define (socket-receive so len #!optional (flags 0))
   (let ((buf (make-string len)))
     (let ((n (%socket-receive! so buf 0 len flags (socket-receive-timeout))))
-      (substring buf 0 n))))
+      (if (= len n)
+	  buf
+	  (substring buf 0 n)))))
 
 ;; Returns 2 values: number of bytes received, and socket address from which they were
 ;; received.
@@ -862,8 +864,9 @@ char *skt_strerror(int err) {
 (define (socket-receive-from so len #!optional (flags 0))
   (let ((buf (make-string len)))
     (let ((R (%socket-receive-from! so buf 0 len flags (socket-receive-timeout))))
-      (values (substring buf 0 (car R))
-	      (cdr R)))))
+      (let ((n (car R)))
+	(values (if (= len n) buf (substring buf 0 n))
+		(cdr R))))))
 
 (define (socket-receive-ready? so)
   (let ((f (select-for-read (socket-fileno so))))

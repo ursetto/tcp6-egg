@@ -20,13 +20,13 @@
  socket-connect! socket-connect/ai
  socket-bind!
  socket-listen!
- socket-accept
+ socket-accept socket-accept-ready?
  socket-shutdown! shut/rd shut/wr shut/rdwr
  socket-close!
  socket-name socket-peer-name
 
  socket-receive! socket-receive-from! socket-receive socket-receive-from
- socket-receive-ready? socket-accept-ready?
+ socket-receive-ready?
  socket-send! socket-send-all! socket-send-to!
  socket-send-size socket-send-buffer-size socket-receive-buffer-size
 
