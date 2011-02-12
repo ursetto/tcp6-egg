@@ -359,10 +359,16 @@ so calling this manually is not often necessary.  One usage example
 is using {{shut/wr}} to inform a server you have finished transmitting,
 while allowing it to continue sending to you.
 
-<procedure>(socket-close so)</procedure>
+<procedure>(socket-close so)</procedure><br>
+<procedure>(socket-close* so)</procedure><br>
 
-Close socket SO.  If a connection was established, the socket is shut
-down gracefully.
+Close socket SO.  If a connection was established,
+the socket is shut down gracefully.
+
+{{socket-close}} throws an error if the close() fails.
+{{socket-close*}} does not, so it is useful if you are unsure if the
+file descriptor has already been closed, for example in a finalizer or
+after a network error.
 
 === Status
 

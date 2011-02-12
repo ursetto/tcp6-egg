@@ -22,7 +22,7 @@
  socket-listen
  socket-accept socket-accept-ready?
  socket-shutdown shut/rd shut/wr shut/rdwr
- socket-close
+ socket-close socket-close*
  socket-name socket-peer-name
 
  socket-receive! socket-receive-from! socket-receive socket-receive-from

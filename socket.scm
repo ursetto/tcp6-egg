@@ -752,6 +752,10 @@ char *skt_strerror(int err) {
     (when (fx= -1 (_close_socket s))
       (network-error/errno 'socket-close "could not close socket" so))))
 
+(define (socket-close* so)   ;; Close socket, ignoring any error.
+  (_close_socket (socket-fileno so))
+  (void))
+
 ;; Returns a socket object representing the accepted connection.
 ;; Does not currently return the socket address of the remote, although it could;
 ;; alternatively you can get it from getpeername.
