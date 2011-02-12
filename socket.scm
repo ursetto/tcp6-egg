@@ -161,6 +161,19 @@ char *skt_strerror(int err) {
 
 ;;; constants
 
+;; (define-foreign-flag AI_NUMERICSERV) =>
+;;   (begin (foreign-declare "#ifndef AI_NUMERICSERV\n#define AI_NUMERICSERV 0\n#endif\n")
+;;          (define-foreign-variable AI_NUMERICSERV int "AI_NUMERICSERV")
+;; (define-for-syntax (c-name sym)
+;;   (string-translate (string-upcase (symbol->string sym)) "/" "_"))
+(define-syntax define-foreign-flag
+  (lambda (e r c)
+    (let ((name (cadr e)))
+      `(,(r 'begin)
+        (,(r 'foreign-declare)
+         ,(sprintf "#ifndef ~A\n#define ~A 0\n#endif\n" name name))
+        (,(r 'define-foreign-variable) ,name ,(r 'int) ,(symbol->string name))))))
+
 (define-foreign-enum-type (address-family int)
   (address-family->integer integer->address-family)
   ((af/unspec AF_UNSPEC) AF_UNSPEC)
@@ -190,14 +203,28 @@ char *skt_strerror(int err) {
 (define ipproto/udp _ipproto_udp)
 
 (define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
-(define-foreign-variable AI_NUMERICHOST int "AI_NUMERICHOST")
-(define-foreign-variable AI_PASSIVE int "AI_PASSIVE")
 (define ai/canonname AI_CANONNAME)
+(define-foreign-variable AI_NUMERICHOST int "AI_NUMERICHOST")
 (define ai/numerichost AI_NUMERICHOST)
+(define-foreign-variable AI_PASSIVE int "AI_PASSIVE")
 (define ai/passive AI_PASSIVE)
+;; These flags will be set to 0 if undefined.  The ones above
+;; will throw a compilation error since they are required.
+(define-foreign-flag AI_NUMERICSERV)
+(define ai/numericserv AI_NUMERICSERV)
+(define-foreign-flag AI_ALL)
+(define ai/all AI_ALL)
+(define-foreign-flag AI_V4MAPPED)
+(define ai/v4mapped AI_V4MAPPED)
+(define-foreign-flag AI_ADDRCONFIG)
+(define ai/addrconfig AI_ADDRCONFIG)
+(define-foreign-flag AI_MASK)
+(define ai/mask AI_MASK)
+(define-foreign-flag AI_DEFAULT)
+(define ai/default AI_DEFAULT)
+
 (define-foreign-variable NI_MAXHOST int "NI_MAXHOST")
 (define-foreign-variable NI_MAXSERV int "NI_MAXSERV")
-
 (define-foreign-variable NI_NUMERICHOST int "NI_NUMERICHOST")
 (define-foreign-variable NI_NUMERICSERV int "NI_NUMERICSERV")
 (define-foreign-variable NI_DGRAM int "NI_DGRAM")
@@ -406,7 +433,7 @@ char *skt_strerror(int err) {
                                                 "port must be a numeric value or #f" port)))))
 	(passive (if ip 0 AI_PASSIVE)))
     (let ((ai (getaddrinfo/ai ip port #f #f #f
-			      (+ AI_NUMERICHOST passive))))  ;; + AI_NUMERICSERV
+			      (+ AI_NUMERICHOST passive AI_NUMERICSERV))))
       (unless ai
 	(network-error 'inet-address "invalid internet address" ip port))
       (let ((saddr (ai->sockaddr ai)))

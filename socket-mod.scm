@@ -4,6 +4,7 @@
  sock/stream sock/dgram sock/raw ;; sock/seqpacket
  ipproto/tcp ipproto/udp
  ai/canonname ai/numerichost ai/passive
+ ai/numericserv ai/addrconfig ai/v4mapped ai/all ai/mask ai/default  ;; may not be implemented
  ni/numerichost ni/numericserv ni/dgram ni/namereqd ni/nofqdn
 
  integer->address-family integer->protocol-type integer->socket-type
