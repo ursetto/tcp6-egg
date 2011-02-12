@@ -889,11 +889,11 @@ char *skt_strerror(int err) {
     (eq? 1 f)))
 (define socket-accept-ready? socket-receive-ready?)
 
-(define (socket-send! so buf #!optional (start 0) (end #f) (flags 0))
+(define (socket-send so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
                        ((blob? buf) (blob-size buf))
                        (else
-                        (network-error 'socket-send!
+                        (network-error 'socket-send
                                        "send buffer must be a blob or a string" so))))
          (end (or end buflen)))
     (##sys#check-exact start)
@@ -902,9 +902,9 @@ char *skt_strerror(int err) {
     (when (or (fx< start 0)
               (fx> end buflen)
               (fx< end start))
-      (network-error 'socket-send! "send buffer offsets out of range" start end))
-    (%socket-send! so buf start (fx- end start) flags (socket-send-timeout))))
-(define (%socket-send! so buf start len flags timeout)
+      (network-error 'socket-send "send buffer offsets out of range" start end))
+    (%socket-send so buf start (fx- end start) flags (socket-send-timeout))))
+(define (%socket-send so buf start len flags timeout)
   (define _send_offset (foreign-lambda* int ((int s) (scheme-pointer buf) (int start)
                                              (int len) (int flags))
                          "C_return(send(s,((char*)buf)+start,len,flags));"))
@@ -914,10 +914,10 @@ char *skt_strerror(int err) {
         (cond ((eq? -1 n)
                (let ((err errno))
                  (cond ((eq? err _ewouldblock)
-                        (block-for-timeout! 'socket-send! timeout s #:output)
+                        (block-for-timeout! 'socket-send timeout s #:output)
                         (retry len start))
                        (else
-                        (network-error/errno* 'socket-send! err "cannot send to socket" so)))))
+                        (network-error/errno* 'socket-send err "cannot send to socket" so)))))
               (else n))))))
 
 ;; Socket output chunk size for send-all.  For compatibility with Unit TCP; maybe not necessary.
@@ -930,20 +930,20 @@ char *skt_strerror(int err) {
 (define socket-receive-buffer-size (make-parameter 4096))
 
 (define-foreign-variable +maximum-string-length+ int "C_HEADER_SIZE_MASK")  ;; horrible
-(define (%socket-send-all! so buf start slen flags timeout chunksz)
+(define (%socket-send-all so buf start slen flags timeout chunksz)
   (let ((chunksz (or chunksz +maximum-string-length+)))
     (let loop ((len slen) (start start))
       (let* ((count (fxmin chunksz len))
-             (n (%socket-send! so buf start count flags timeout)))
+             (n (%socket-send so buf start count flags timeout)))
         (if (fx< n len)
             (loop (fx- len n) (fx+ start n))
             (void))))))
 
-(define (socket-send-all! so buf #!optional (start 0) (end #f) (flags 0))
+(define (socket-send-all so buf #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
                        ((blob? buf) (blob-size buf))
                        (else
-                        (network-error 'socket-send-all!
+                        (network-error 'socket-send-all
                                        "send buffer must be a blob or a string" so))))
          (end (or end buflen)))
     (##sys#check-exact start)
@@ -952,18 +952,18 @@ char *skt_strerror(int err) {
     (when (or (fx< start 0)
               (fx> end buflen)
               (fx< end start))
-      (network-error 'socket-send-all! "send buffer offsets out of range" start end))
-    (%socket-send-all! so buf start (fx- end start) flags
+      (network-error 'socket-send-all "send buffer offsets out of range" start end))
+    (%socket-send-all so buf start (fx- end start) flags
                        (socket-send-timeout)
                        (socket-send-size))))
 
-;; Like socket-send!, but used for connectionless protocols; sends to non-connected
+;; Like socket-send, but used for connectionless protocols; sends to non-connected
 ;; address SADDR.
-(define (socket-send-to! so buf saddr #!optional (start 0) (end #f) (flags 0))
+(define (socket-send-to so buf saddr #!optional (start 0) (end #f) (flags 0))
   (let* ((buflen (cond ((string? buf) (string-length buf))
                        ((blob? buf) (blob-size buf))
                        (else
-                        (network-error 'socket-send-to!
+                        (network-error 'socket-send-to
                                        "send buffer must be a blob or a string" so))))
          (end (or end buflen)))
     (##sys#check-exact start)
@@ -972,9 +972,9 @@ char *skt_strerror(int err) {
     (when (or (fx< start 0)
               (fx> end buflen)
               (fx< end start))
-      (network-error 'socket-send-to! "send buffer offsets out of range" start end))
-    (%socket-send-to! so buf saddr start (fx- end start) flags (socket-send-timeout))))
-(define (%socket-send-to! so buf saddr start len flags timeout)
+      (network-error 'socket-send-to "send buffer offsets out of range" start end))
+    (%socket-send-to so buf saddr start (fx- end start) flags (socket-send-timeout))))
+(define (%socket-send-to so buf saddr start len flags timeout)
   (define _sendto_offset (foreign-lambda* int ((int s) (scheme-pointer buf)
 					       (int start) (int len) (int flags)
 					       (scheme-pointer addr) (int addrlen))
@@ -987,10 +987,10 @@ char *skt_strerror(int err) {
         (cond ((eq? -1 n)
                (let ((err errno))
                  (cond ((eq? err _ewouldblock)
-                        (block-for-timeout! 'socket-send-to! timeout s #:output)
+                        (block-for-timeout! 'socket-send-to timeout s #:output)
                         (retry len start))
                        (else
-                        (network-error/errno* 'socket-send-to! err "cannot send to socket" so saddr)))))
+                        (network-error/errno* 'socket-send-to err "cannot send to socket" so saddr)))))
               (else n))))))
 
 
@@ -1176,7 +1176,7 @@ char *skt_strerror(int err) {
 	       ) )
 	     (output
 	      (lambda (str off len)
-		(%socket-send-all! so str off len 0 tmw output-chunk-size)))
+		(%socket-send-all so str off len 0 tmw output-chunk-size)))
 	     (out
 	      (make-output-port
 	       (if outbuf

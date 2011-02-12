@@ -27,7 +27,7 @@
 
  socket-receive! socket-receive-from! socket-receive socket-receive-from
  socket-receive-ready?
- socket-send! socket-send-all! socket-send-to!
+ socket-send socket-send-all socket-send-to
  socket-send-size socket-send-buffer-size socket-receive-buffer-size
 
  ;; ports

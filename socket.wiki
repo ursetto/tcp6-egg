@@ -1,6 +1,6 @@
 [[tags:egg net]]
 
-'''socket''' provides an interface to the BSD socket API.
+'''socket''' provides an interface to the BSD socket API.  For a somewhat higher-level interface, see the [[/egg/tcp6|tcp6]] and [[/egg/udp6|udp6]] extensions.
 
 == Overview
 
@@ -437,7 +437,7 @@ object representing the source.  Otherwise, it behaves like
 
 ==== Sending data
 
-<procedure>(socket-send! so buf #!optional (start 0) (end #f) (flags 0))</procedure>
+<procedure>(socket-send so buf #!optional (start 0) (end #f) (flags 0))</procedure>
 
 Sends data to socket SO from the buffer BUF, which may be a
 string or a blob.  START and END are optional offsets into BUF; the
@@ -450,16 +450,16 @@ threads can proceed.  If the send does not complete within
 
 Returns the number of bytes actually sent.
 
-<procedure>(socket-send-to! so buf saddr #!optional (start 0) (end #f) (flags 0))</procedure>
+<procedure>(socket-send-to so buf saddr #!optional (start 0) (end #f) (flags 0))</procedure>
 
-Like {{socket-send!}}, but sends data over a connectionless datagram
+Like {{socket-send}}, but sends data over a connectionless datagram
 socket to {{sockaddr}} SADDR, returning the number of bytes actually
 sent.
 
-<procedure>(socket-send-all! so buf #!optional (start 0) (end #f) (flags 0))</procedure>
+<procedure>(socket-send-all so buf #!optional (start 0) (end #f) (flags 0))</procedure>
 
 Sends all data between START and END in BUF over connected socket SO
-by calling {{socket-send!}} multiple times until all data is sent.
+by calling {{socket-send}} multiple times until all data is sent.
 
 Data is sent in chunks of size {{(socket-send-size)}}; the last chunk
 sent may be smaller than this.  A {{#f}} value for
@@ -486,9 +486,9 @@ and chunking, as well as recommendations for use with datagrams.
 {{socket-i/o-ports}} is normally used with stream sockets.  Input data
 is always buffered in a buffer of size {{(socket-receive-buffer-size)}}.
 Whenever the buffer is empty, {{socket-receive!}} is called once to read
-up to that many bytes.  Output data is sent with {{socket-send-all!}},
+up to that many bytes.  Output data is sent with {{socket-send-all}},
 so it may be divided into chunks of size {{(socket-send-size)}}.  If
-output is unbuffered, {{socket-send-all!}} is called as soon as data
+output is unbuffered, {{socket-send-all}} is called as soon as data
 is written to the port.  
 
 If output is buffered by setting {{(socket-send-buffer-size)}} to N,
@@ -497,7 +497,7 @@ only multiples of the buffer size are sent (any overage is kept in the
 buffer).  For example, if the buffer can hold 512 bytes and contains
 500 bytes, writing 526 more bytes brings the total unsent size to 1026
 bytes.  1024 bytes (2 blocks) are written out in a single call to
-{{socket-send-all!}} and the last 2 bytes are retained in the buffer.
+{{socket-send-all}} and the last 2 bytes are retained in the buffer.
 
 When the output buffer size and chunk size are both set, it is
 recommended to make the chunk size a multiple of the buffer size; for
@@ -513,7 +513,7 @@ buffer whenever the buffer is empty.  (If the datagram is smaller than
 the buffer, repeated reads are not performed; rather, the buffer is
 used until exhausted again.  Any datagram exceeding the buffer size
 will be truncated.)  Output is divided into chunks of size
-{{(socket-send-size)}}, as in {{socket-send-all!}} -- this is useful
+{{(socket-send-size)}}, as in {{socket-send-all}} -- this is useful
 for placing a maximum cap on datagram size transmitted.  Finally,
 output buffering may be enabled, which behaves the same as with TCP
 ports; characters are buffered and sent in blocks of
@@ -575,7 +575,7 @@ ports.  If {{#f}}, no buffering is done.  A power of 2, such as 1K or 4K,
 is an appropriate value.
 
 {{(socket-send-size)}} is used by socket output ports, and is the size
-used in a single call to {{socket-send!}} by {{socket-send-all!}}.  It
+used in a single call to {{socket-send}} by {{socket-send-all}}.  It
 can be {{#f}}, meaning infinite, so that any remaining data is sent at
 each call.  When set, it should usually be a multiple of
 {{(socket-send-buffer-size)}}, assuming buffering is also enabled.  A
@@ -832,6 +832,9 @@ default on Linux, but not Solaris or OS X.
 
 [[http://3e8.org|Jim Ursetto]]
 
+Some code was derived from the core [[/man/4/Unit tcp|tcp]]
+unit by Felix Winkelmann and the rest of the Chicken team.
+
 === Version history
 
 ; 0.1 : Initial release for Chicken 4.
@@ -839,6 +842,8 @@ default on Linux, but not Solaris or OS X.
 === License
 
  Copyright (c) 2011 Jim Ursetto.  All rights reserved.
+ Copyright (c) 2008-2011, The Chicken Team
+ Copyright (c) 2000-2007, Felix L. Winkelmann 
  
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
