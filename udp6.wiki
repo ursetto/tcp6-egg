@@ -76,7 +76,7 @@ Returns the port to which the socket is bound.
 == UDP ports
 
 Input and output Scheme ports can be created from a connected UDP
-socket using {{socket-i/o-ports}} from the [[/egg/socket]] egg.
+socket using {{socket-i/o-ports}} from the [[/egg/socket|socket]] egg.
 An example will be provided in the future.
 
 == Example

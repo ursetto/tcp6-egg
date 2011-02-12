@@ -98,7 +98,9 @@ int WSAAPI skt_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *nod
 #define EWOULDBLOCK WSAEWOULDBLOCK
 #define EINPROGRESS WSAEINPROGRESS
 #define ENOTCONN WSAENOTCONN
+#ifndef EINVAL
 #define EINVAL WSAEINVAL
+#endif
 /* Note that it may be possible to replace all references to errno/GetLastError() with
    a getsockopt(SO_ERROR). */
 #define errno (WSAGetLastError())
