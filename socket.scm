@@ -134,6 +134,29 @@ char *skt_strerror(int err) {
 
 ")
 
+;;; error handling
+
+(define-foreign-variable errno int "errno")
+(define strerror (foreign-lambda c-string "skt_strerror" int))
+
+(define-inline (type-error where msg . args)
+  (apply ##sys#signal-hook #:type-error where msg args))
+(define-inline (domain-error where msg . args)
+  (apply ##sys#signal-hook #:domain-error where msg args))
+(define-inline (network-error where msg . args)
+  (apply ##sys#signal-hook #:network-error where msg args))
+(define-inline (network-error/errno where msg . args)
+  (let ((err errno))
+    (##sys#update-errno) ;; Note that this may cause context switch, and wipe out errno
+    (apply ##sys#signal-hook #:network-error where
+           (string-append msg " - " (strerror err))
+           args)))
+(define-inline (network-error/errno* where err msg . args)
+;;(##sys#update-errno)
+  (apply ##sys#signal-hook #:network-error where
+         (string-append msg " - " (strerror err))
+         args))
+
 ;;; constants
 
 (define-foreign-enum-type (address-family int)
@@ -354,7 +377,7 @@ char *skt_strerror(int err) {
                #f)
               (else
                (when res (freeaddrinfo res))   ;; correct??
-               (error 'getaddrinfo (gai_strerror rc) node)))))))
+               (network-error 'getaddrinfo (gai_strerror rc) node)))))))
 (define (getaddrinfo node service family socktype protocol flags)
   (let* ((ai (getaddrinfo/ai node service family socktype protocol flags))
          (addrinfo (ai-list->addrinfo ai)))
@@ -377,12 +400,13 @@ char *skt_strerror(int err) {
 (define (inet-address ip port)
   (let ((port (and port
 		      (cond ((and (exact? port) (number->string port)))
-			    (else (network-error "port must be a numeric value or #f" port)))))
+			    (else (domain-error 'inet-address
+                                                "port must be a numeric value or #f" port)))))
 	(passive (if ip 0 AI_PASSIVE)))
     (let ((ai (getaddrinfo/ai ip port #f #f #f
 			      (+ AI_NUMERICHOST passive))))  ;; + AI_NUMERICSERV
       (unless ai
-	(error 'inet-address "invalid internet address" ip port))
+	(network-error 'inet-address "invalid internet address" ip port))
       (let ((saddr (ai->sockaddr ai)))
 	(freeaddrinfo ai)
 	saddr))))
@@ -412,7 +436,7 @@ char *skt_strerror(int err) {
                (cons (substring node 0 (string-index node #\nul))
                      (substring serv 0 (string-index serv #\nul))))
               (else
-               (error 'getnameinfo (gai_strerror rc))))))))
+               (network-error 'getnameinfo (gai_strerror rc))))))))
 
 
 
@@ -433,8 +457,6 @@ char *skt_strerror(int err) {
   (set! socket-connect-timeout (make-parameter #f (check 'socket-connect-timeout))) 
   (set! socket-accept-timeout (make-parameter #f (check 'socket-accept-timeout))))
 
-(define-foreign-variable errno int "errno")
-(define-foreign-variable strerrno c-string "skt_strerror(errno)")
 (define-foreign-variable _invalid_socket int "INVALID_SOCKET")
 (define-foreign-variable _ewouldblock int "EWOULDBLOCK")
 (define-foreign-variable _einprogress int "EINPROGRESS")
@@ -453,7 +475,6 @@ char *skt_strerror(int err) {
 (define shut/rdwr SHUT_RDWR)
 
 (define _close_socket (foreign-lambda int "closesocket" int))
-(define strerror (foreign-lambda c-string "skt_strerror" int))
 
 (define _make_socket_nonblocking
   (foreign-lambda* bool ((int fd))
@@ -502,19 +523,6 @@ char *skt_strerror(int err) {
      if(rv > 0) { rv = (FD_ISSET(fd, &out) || FD_ISSET(fd, &exc)) ? 1 : 0; }
      C_return(rv);") )
 
-(define-inline (network-error where msg . args)
-  (apply ##sys#signal-hook #:network-error where msg args))
-(define-inline (network-error/errno where msg . args)
-  (let ((err errno))
-    (##sys#update-errno) ;; Note that this may cause context switch, and wipe out errno
-    (apply ##sys#signal-hook #:network-error where
-           (string-append msg " - " (strerror err))
-           args)))
-(define-inline (network-error/errno* where err msg . args)
-;;(##sys#update-errno)
-  (apply ##sys#signal-hook #:network-error where
-         (string-append msg " - " (strerror err))
-         args))
 (define-inline (socket-timeout-error where timeout so)
   (##sys#signal-hook
    #:network-timeout-error
@@ -626,7 +634,7 @@ char *skt_strerror(int err) {
          (ndelay (vector-length delays)))
     (lambda (ms)
       (cond
-       ((< ms 0) (error 'busy-timeout "timeout must be non-negative" ms))
+       ((< ms 0) (domain-error 'busy-timeout "timeout must be non-negative" ms))
        ((= ms 0) #f)
        (else
         (let ((start (current-milliseconds)))
@@ -1058,7 +1066,7 @@ char *skt_strerror(int err) {
   (##sys#check-port p 'socket-abandon-port)
   (unless (eq? (##sys#slot p 7)
 	       'socket6)            ;; port data has no header (right now); use port type id
-    (error 'socket-port-data "argument is not a socket port" p))
+    (type-error 'socket-port-data "argument is not a socket port" p))
   (##sys#port-data p))
 (define-inline (%socket-port-data-socket data)            (##sys#slot data 0))
 (define-inline (%socket-port-data-input-abandoned? data)  (##sys#slot data 1))
