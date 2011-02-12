@@ -1,0 +1,321 @@
+[[tags: manual]]
+
+'''tcp6''' provides facilities for communicating over TCP/IP and
+supports both IPv4 and IPv6.
+
+[[toc:]]
+
+== Overview
+
+This extension provides facilities for communicating over TCP sockets
+with an interface that is backwards-compatible with [[/man/4/Unit
+tcp|Unit tcp]].  It is implemented on top of the
+[[/egg/socket|socket]] egg and consequently supports IPv6 and
+non-blocking operations on Windows.
+
+All errors related to failing network operations will raise a
+condition of kind {{(exn i/o net)}}.  Timeouts raise the error {{(exn
+i/o net timeout)}}.
+
+== Usage
+
+Simply replace {{(use tcp)}} with {{(use tcp6)}}.  The API is the same,
+although it includes a few extensions: {{tcp-bind-v6-only}},
+{{tcp-connect/ai}} and {{tcp-listener-socket}}.
+
+== Servers
+
+<procedure>(tcp-listen TCPPORT [BACKLOG [HOST]])</procedure>
+
+Creates and returns a TCP listener object that listens for connections on {{TCPPORT}}, which
+should be an exact integer. {{BACKLOG}} specifies the number of maximally pending
+connections (and defaults to 4). 
+
+If the optional argument {{HOST}} is given and not {{#f}}, then only
+incoming connections for the given host (or IP) are accepted.
+
+When HOST is {{#f}}, it listens on all IPv4 and IPv6 addresses using a
+socket bound to {{"::"}}, the IPv6 unspecified address.
+
+However, if you have set {{(tcp-bind-ipv6-only #t)}}, we listen on
+{{"0.0.0.0"}} to IPv4 only.  To listen to IPv6 only in this case, use
+a HOST of {{"::"}}.
+
+<procedure>(tcp-listener? X)</procedure>
+
+Returns {{#t}} if {{X}} is a TCP listener object, or {{#f}} otherwise.
+
+<procedure>(tcp-close LISTENER)</procedure>
+
+Reclaims any resources associated with {{LISTENER}}.
+
+<procedure>(tcp-accept LISTENER)</procedure>
+
+Waits until a connection is established on the port on which
+{{LISTENER}} is listening and returns two values: an input- and
+output-port that can be used to communicate with the remote
+process. The current value of {{tcp-accept-timeout}} is used to
+determine the maximal number of milliseconds (if any) to wait
+until a connection is established. When a client connects any 
+read- and write-operations on the returned ports will use the
+current values (at the time of the connection) of {{tcp-read-timeout}}
+and {{tcp-write-timeout}}, respectively, to determine the maximal
+number of milliseconds to wait for input/output before a timeout
+error is signalled.
+
+Note: this operation and any I/O on the ports returned will not block
+other running threads.
+
+<procedure>(tcp-accept-ready? LISTENER)</procedure>
+
+Returns {{#t}} if there are any connections pending on {{LISTENER}}, or {{#f}}
+otherwise.
+
+<procedure>(tcp-listener-port LISTENER)</procedure>
+
+Returns the port number assigned to {{LISTENER}}. (If you pass {{0}} to {{tcp-listen}},
+then the system will choose a port-number for you.)
+
+<procedure>(tcp-listener-socket LISTENER)</procedure>
+
+Returns the socket object associated with {{LISTENER}}.  This
+procedure is an addition over [[/man/4/Unit tcp]].
+
+<procedure>(tcp-listener-fileno LISTENER)</procedure>
+
+Returns the file-descriptor associated with {{LISTENER}}.
+
+=== Clients
+
+<procedure>(tcp-connect HOSTNAME [TCPPORT])</procedure>
+
+Establishes a client-side TCP connection to the machine with the node
+name or IP address {{HOSTNAME}} (a string) at {{TCPPORT}} (an exact
+integer or a service name) and returns two values: an input- and
+output-port for communicating with the remote process.
+
+If the {{TCPPORT}} is omitted, the port is parsed from the
+{{HOSTNAME}} string.  The format expected is {{"HOST:PORT"}}, or
+{{"[HOST]:PORT"}} if {{HOST}} is an IPv6 string.  The {{PORT}} can
+either be a string representation of an integer or a service name
+which is translated to an integer using {{address-information}} from
+[[/egg/socket|socket]].
+
+Address resolution is performed using {{address-information}}, which
+may return multiple addresses for a given hostname, including both
+IPv6 and IPv4 addresses.  {{tcp-connect}} will try each of these in
+turn until one succeeds.  See {{tcp-connect/ai}} for more information.
+For example, connecting to {{"localhost:ssh"}} may connect to
+{{"[::1]:22"}}, {{"fe80::1%lo"}}, and {{"127.0.0.1:22"}} in turn,
+until an ssh listener is contacted.
+
+The current value of {{tcp-connect-timeout}} is used to determine the
+maximum number of milliseconds (if any) to wait until the connection
+is established. When the connection takes place any read- and
+write-operations on the returned ports will use the current values (at
+the time of the call to {{tcp-connect}}) of {{tcp-read-timeout}} and
+{{tcp-write-timeout}}, respectively, to determine the maximum number
+of milliseconds to wait for input/output before a timeout error is
+signalled.
+
+Note: any I/O on the ports returned will not block other running threads.
+
+<procedure>(tcp-connect/ai ais)</procedure>
+
+Takes a list of {{addrinfo}} objects, obtained from
+{{address-information}} in the [[/egg/socket|socket egg]], and
+connects to each in turn until one succeeds.  If a timeout occurs
+during connection, or a transient error (connection refused, host
+unreachable) occurs, the next address in the list will be tried.  If
+all addresses fail, the last error encountered is propagated to the
+caller.  If a fatal socket error occurs then we terminate immediately.
+
+{{tcp-connect}} is equivalent to
+
+ (tcp-connect/ai (address-information hostname tcpport))
+
+which may include IPv6 and IPv4 addresses.  To connect instead to
+{{localhost:22}} over IPv4 only:
+
+ (tcp-connect/ai (address-information "localhost" 22 family: af/inet))
+
+and to try to connect to the first HTTP mirror that accepts your
+connection:
+
+ (tcp-connect/ai
+  (append (address-information "athena.example.com" 80)
+          (address-information "achilles.example.com" 80)
+          (address-information "aphrodite.example.com" 80)))
+
+Keeping the connect timeout low is probably a good idea in the last
+case.
+
+== Port operations
+
+<procedure>(tcp-addresses PORT)</procedure>
+
+Returns two values for the input- or output-port {{PORT}} (which should be a port returned
+by either {{tcp-accept}} or {{tcp-connect}}): the IP address of the local and the remote
+machine that are connected over the socket associated with {{PORT}}. The returned addresses
+are IPv4 or IPv6 strings.
+
+<procedure>(tcp-port-numbers PORT)</procedure>
+
+Returns two values for the input- or output-port {{PORT}} (which should be a port returned
+by either {{tcp-accept}} or {{tcp-connect}}): the TCP port numbers of the local and the remote
+machine that are connected over the socket associated with {{PORT}}.
+
+<procedure>(tcp-abandon-port PORT)</procedure>
+
+Marks the socket port {{PORT}} as abandoned.  This is mainly useful to
+close down an input or output port without shutting down that side of
+the connection.  See {{socket-abandon-port}} in [[/egg/socket|socket]]
+for more information.
+
+<procedure>(tcp-port->socket PORT)</procedure>
+
+Return the socket object associated with TCP input or output port
+{{PORT}}.  
+
+{{port->fileno}} from [[/man/4/posix|Unit posix]] cannot be
+used with TCP ports created by this egg.
+
+=== Parameters
+
+<parameter>tcp-buffer-size</parameter>
+
+Sets the size of the output buffer. By default no output-buffering for
+TCP output is done, but to improve performance by minimizing the
+number of TCP packets, buffering may be turned on by setting this
+parameter to an exact integer greater than zero.  For best
+performance, it should be a power of 2 such as 128, 1024 or 4096.  A
+buffer size of {{#f}} turns buffering off.  The setting of this
+parameter takes effect at the time when the I/O ports for a particular
+socket are created, i.e. when {{tcp-connect}} or {{tcp-accept}} is
+called.
+
+See {{socket-receive-size}} and {{socket-send-size}} in the
+[[/egg/socket|socket egg]] for additional send and receive tuning that
+can be done with TCP ports.  This parameter is itself equivalent to
+{{socket-send-buffer-size}}.
+
+Note that since output is not immediately written to the associated socket, you
+may need to call {{flush-output}} once you want the output to be transmitted.
+Closing the output port will flush automatically.
+
+<parameter>tcp-read-timeout</parameter>
+
+Determines the timeout for TCP read operations in milliseconds. A timeout of
+{{#f}} disables timeout checking. The default read timeout is 60000, i.e.
+1 minute.
+If timeout occurs while reading, a condition object of kind {{(exn i/o net timeout)}}
+is thrown.
+
+<parameter>tcp-write-timeout</parameter>
+
+Determines the timeout for TCP write operations in milliseconds. A timeout of
+{{#f}} disables timeout checking. The default write timeout is 60000, i.e.
+1 minute.
+If timeout occurs while writing, a condition object of kind {{(exn i/o net timeout)}}
+is thrown.
+
+<parameter>tcp-connect-timeout</parameter>
+
+Determines the timeout for {{tcp-connect}} operations in milliseconds. A timeout of
+{{#f}} disables timeout checking and is the default.
+If timeout occurs while trying to connect, a condition object of kind {{(exn i/o net timeout)}}
+is thrown.
+
+<parameter>tcp-accept-timeout</parameter>
+
+Determines the timeout for {{tcp-accept}} operations in milliseconds. A timeout of
+{{#f}} disables timeout checking and is the default.
+If timeout occurs while waiting for connections, a condition object of kind {{(exn i/o net timeout)}}
+is thrown.
+
+<parameter>tcp-bind-ipv6-only</parameter>
+
+When {{#f}}, the default, IPv6 listening sockets will accept IPv6 or
+IPv4 connections when possible.  This is only relevant when listening on the
+unspecified address "::".  When {{#t}}, IPv6 listeners will not accept
+IPv4 connections.
+
+=== Example
+
+A very simple example follows. Say we have the two files {{client.scm}}
+and {{server.scm}}:
+
+<enscript highlight=scheme>
+ ; client.scm
+ (use tcp6)
+ (define-values (i o) (tcp-connect "localhost" 4242))
+ (write-line "Good Bye!" o)
+ (print (read-line i))
+</enscript>
+
+<enscript highlight=scheme>
+ ; server.scm
+ (use tcp6)
+ (define l (tcp-listen 4242))
+ (define-values (i o) (tcp-accept l))
+ (write-line "Hello!" o)
+ (print (read-line i))
+ (close-input-port i)
+ (close-output-port o)
+</enscript>
+
+ % csc server.scm
+ % csc client.scm
+ % ./server &
+ % ./client
+ Good Bye!
+ Hello!
+
+== About this egg
+
+=== Author
+
+[[http://3e8.org|Jim Ursetto]]
+
+This code has been completely rewritten from the core TCP unit, but
+some of the original code was moved into the socket egg, and the API
+is largely unchanged.
+
+=== Version history
+
+; 0.1 : Initial release.
+
+=== License
+
+ Copyright (c) 2011, Jim Ursetto
+ Copyright (c) 2008-2011, The Chicken Team
+ Copyright (c) 2000-2007, Felix L. Winkelmann
+ All rights reserved.
+ 
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ 
+ - Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
+ - Redistributions in binary form must reproduce the above copyright
+ notice, this list of conditions and the following disclaimer in
+ the documentation and/or other materials provided with the
+ distribution.
+ - Neither the name of the author nor the names of its contributors
+ may be used to endorse or promote products derived from this
+ software without specific prior written permission.
+  
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ OF THE POSSIBILITY OF SUCH DAMAGE.
+
