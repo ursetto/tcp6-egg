@@ -7,7 +7,7 @@
  tcp-listener-port tcp-listener-fileno tcp-listener-socket
  tcp-buffer-size
  tcp-read-timeout tcp-write-timeout tcp-accept-timeout tcp-connect-timeout
-
+ tcp-port->socket
  tcp-bind-ipv6-only)
 
 (import scheme (only chicken include use))

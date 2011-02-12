@@ -108,13 +108,13 @@
       (udp-error 'udp-connect! "node and/or service lookup failed" so host port))
     (socket-connect so (addrinfo-address (car ais)))))
 
-;; Maybe add udp-connect and/or udp-connect/ai
+;; Maybe add udp-connect (construct ports) and/or udp-connect/ai
 
 ;;; udp-send : udp-socket string [start end flags] -> unspecified
 ;;; send bytes in string to the peer for this socket as specified earlier
 ;;; with udp-connect!.  If the socket was not "connected", send(2) will
 ;;; raise an error.
-(define udp-send socket-send!)
+(define udp-send socket-send)
 
 ;;; udp-sendto : udp-socket host-string port-num string -> unspecified
 ;;; send bytes in string to host:port via udp-socket.
@@ -126,7 +126,7 @@
       (udp-error 'udp-sendto "node and/or service lookup failed" so host port))
     (let* ((ai (car ais))
            (saddr (addrinfo-address ai)))
-      (socket-send-to! so str saddr))))
+      (socket-send-to so str saddr))))
 
 ;;; udp-recv : udp-socket string [flags] -> [len packet]
 ;;; receive a packet and store the data in string, returning the

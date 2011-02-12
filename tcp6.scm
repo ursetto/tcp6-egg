@@ -79,6 +79,7 @@
 (define (tcp-close tcpl)
   (socket-close (tcp-listener-socket tcpl)))
 
+;; Currently we rely on socket egg defaults for these
 (define-constant +input-buffer-size+ 1024)
 (define-constant +output-chunk-size+ 8192)
 
@@ -92,9 +93,10 @@
 (define (tcp-accept tcpl)
   (parameterize ((socket-accept-timeout (tcp-accept-timeout)))
     (let ((so (socket-accept (tcp-listener-socket tcpl))))
-      (parameterize ((socket-send-size           +output-chunk-size+)
+      (parameterize (;;(socket-send-size           +output-chunk-size+)
+                     ;;(socket-receive-buffer-size +input-buffer-size+)
                      (socket-send-buffer-size    (tcp-buffer-size))
-                     (socket-receive-buffer-size +input-buffer-size+)))
+                     ))
       (socket-i/o-ports so))))
 
 (define (tcp-accept-ready? tcpl)
@@ -120,9 +122,10 @@
     (parameterize ((socket-connect-timeout (tcp-connect-timeout))
                    (socket-receive-timeout (tcp-read-timeout))
                    (socket-send-timeout    (tcp-write-timeout))
-                   (socket-send-size           +output-chunk-size+)
+;;                 (socket-send-size           +output-chunk-size+)
+;;                 (socket-receive-buffer-size +input-buffer-size+)
                    (socket-send-buffer-size    (tcp-buffer-size))
-                   (socket-receive-buffer-size +input-buffer-size+))
+                   )
       (socket-i/o-ports (socket-connect/ai ais)))))
 
 (define (tcp-connect host . more)
@@ -156,6 +159,9 @@
 (define (tcp-abandon-port p)
   (socket-abandon-port p))
 
+(define (tcp-port->socket p)
+  (socket-i/o-port->socket p))
+
 ;;; notes
 
 ;; added tcp-bind-ipv6-only param; if af/inet6, will set IPV6_V6ONLY option on socket
@@ -163,6 +169,6 @@
 ;; tcp-connect accepts service name string (may issue SRV request)
 ;; tcp-connect connects to multiple addresses (or explicitly with tcp-connect/ai)
 
-;; input buffer and output chunk size are not configurable
+;; input buffer and output chunk size are not configurable without using [[socket]] calls
 
 ;; On XP, you must do 'netsh interface ipv6 install' to activate ipv6.
