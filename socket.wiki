@@ -641,6 +641,12 @@ generalized set:
 
  (set! (so-reuse-address? s) #t)
 
+As a special note on {{so-reuse-address?}}, on Windows platforms it
+will first attempt to use option {{so/exclusiveaddruse}} because this
+option matches UNIX semantics.  If this fails it will fall back to
+{{so/reuseaddr}}, which allows any processes to rebind a previously
+bound address and port.
+
 <procedure>(tcp-no-delay? s)        [tcp/nodelay]</procedure><br>
 <procedure>(tcp-no-push? s)         [tcp/nopush]</procedure><br>
 <procedure>(tcp-no-options? s)      [tcp/noopt]</procedure><br>
@@ -747,6 +753,7 @@ it.
 <constant>so/useloopback</constant><br>
 <constant>so/reuseport</constant><br>
 <constant>so/timestamp</constant><br>
+<constant>so/exclusiveaddruse</constant><br>
 
 Socket-level socket options for use with {{set-socket-option}} and
 {{get-socket-option}} at level {{sol/socket}}.
