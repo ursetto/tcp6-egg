@@ -186,17 +186,21 @@
     (##sys#signal-hook #:type-error
                        (and (pair? y) (car y))
                        "bad argument type: not a boolean" x)))
-(define-inline (check-error err where)
+(define-inline (check-error where err)
   (let ((no errno))
     (when (fx= -1 err)
-      (##sys#update-errno)
-      (##sys#signal-hook #:network-error where (strerror no)))))
+      (if (or (fx= no _enoprotoopt)  ;; False + on  Win for e.g. sock/dgram when stream expected
+              (fx= no _einval))      ;; Maybe incorrect level; but false + on dgram when stream expected
+          (unsupported-error where (strerror no))
+          (begin
+            (##sys#update-errno)
+            (##sys#signal-hook #:network-error where (strerror no)))))))
 
 (define (set-integer-option s level name val)
   (##sys#check-exact val 'set-socket-option)
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (let ((err (setsockopt/int s level name val)))
-      (check-error err 'set-socket-option)
+      (check-error 'set-socket-option err)
       (void))))
 
 (define (set-boolean-option s level name val)
@@ -209,7 +213,7 @@
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (let-location ((val int))
       (let ((err (getsockopt/int s level name (location val))))
-        (check-error err 'get-socket-option)
+        (check-error 'get-socket-option err)
         val))))
 
 (define (set-readonly-option s level name val)  ; don't get a symbol here, only an int -- fixme?
@@ -258,11 +262,11 @@
                  ((fixnum? val)
                   (set-integer-option s level name val))
                  ((blob? val)
-                  (check-error (setsockopt s level name val (blob-size val))
-                               'set-socket-option))
+                  (check-error 'set-socket-option
+                               (setsockopt s level name val (blob-size val))))
                  ((string? val)
-                  (check-error (setsockopt s level name val (string-length val))
-                               'set-socket-option))
+                  (check-error 'set-socket-option
+                               (setsockopt s level name val (string-length val))))
                  (else
                   (##sys#signal-hook #:type-error
                                      'set-socket-option
@@ -287,7 +291,7 @@
            (let-location ((sz int len))
              (let ((s (if (socket? s) (socket-fileno s) s)))
                ;; FIXME: Report unsupported error correctly
-               (check-error (getsockopt s level name buf (location sz)) 'get-socket-option))
+               (check-error 'get-socket-option (getsockopt s level name buf (location sz))))
              (if (= sz len)
                  buf
                  (let ((retbuf (make-blob sz)))
