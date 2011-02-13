@@ -604,6 +604,10 @@ getters to set socket options.
 An error is thrown if the socket call fails, if the value passed is of
 incorrect type, or if you try to set a read-only option.
 
+An error of {{(exn i/o net unsupported)}} is thrown if you try to use
+a socket option that is not defined at all on the platform, or that is
+defined but not supported by the operating system.
+
 === Socket option accessors
 
 Below is a list of option procedures and their value type.  The procedure names are
@@ -635,6 +639,10 @@ generalized set:
  (set! (so-reuse-address? s) #t)
 
 <procedure>(tcp-no-delay? s)        [tcp/nodelay]</procedure><br>
+<procedure>(tcp-no-push? s)         [tcp/nopush]</procedure><br>
+<procedure>(tcp-no-options? s)      [tcp/noopt]</procedure><br>
+<procedure>(tcp-keep-alive s)       [tcp/keepalive]</procedure><br>
+<procedure>(tcp-max-segment-size s) [tcp/maxseg]</procedure><br>
 
 Getters / setters for TCP-level socket options ({{ipproto/tcp}}).  S is
 a ''socket'' object or an integer file descriptor.
@@ -667,6 +675,9 @@ Set the value of option {{NAME}} at socket level {{LEVEL}} on socket {{S}} to {{
 {{VAL}} may be a fixnum or a boolean.  It may also be a blob or a string; if so, the raw
 contents are passed to the option, which is useful when a structure is required.  The return value is unspecified.
 
+If an unsupported option or level is requested, a condition of type
+{{(exn i/o net unsupported)}} is raised.
+
 Note: due to the vagaries of structure member alignment (and 32 vs. 64-bit sizes), it's
 not generally safe to pack raw data yourself into a blob or a SRFI-4 vector.  Instead, you
 should treat the blob contents as a C struct.  See the longer example down the page
@@ -685,6 +696,9 @@ length {{LEN}} is allocated to receive the binary option data; after
 the call it is resized to fit the data, and returned.  If LEN is too
 small to hold the returned data, the result is undefined.
 
+If an unsupported option or level is requested, a condition of type
+{{(exn i/o net unsupported)}} is raised.
+
 This procedure does not convert integers to boolean values---if you
 expect a boolean flag, assume zero means {{#f}} and non-zero means
 {{#t}}.  Don't be surprised if boolean flags return different non-zero
@@ -697,13 +711,17 @@ You can only rely on true being some non-zero value.
 
 === Socket option constants
 
-Integer constants are provided for socket levels, socket types, socket
-options, and address and protocol families, as prescribed by BSD.
-They are renamed slightly, and consistently, to achieve a more
-Schemely appearance: for example, C's {{SO_REUSEADDR}} becomes
-{{so/reuseaddr}}.
+Integer constants are provided for socket levels, socket types, and
+socket options.  They are renamed slightly, and consistently, to
+achieve a more Schemely appearance: for example, C's {{SO_REUSEADDR}}
+becomes {{so/reuseaddr}}.
 
-Not every possible value is currently available.
+Some platforms do not define all the constants we provide.  If a
+constant is undefined, its value is {{#f}} and attempting to get or
+set it will raise an error.  Note that a platform may define a
+constant but not support it (for example, {{ipv6/v6only}} on Windows
+prior to Vista); this will not be known until you try to get or set
+it.
 
 ==== Socket-level constants
 
@@ -723,6 +741,9 @@ Not every possible value is currently available.
 <constant>so/rcvtimeo</constant><br>
 <constant>so/error</constant><br>
 <constant>so/type</constant><br>
+<constant>so/useloopback</constant><br>
+<constant>so/reuseport</constant><br>
+<constant>so/timestamp</constant><br>
 
 Socket-level socket options for use with {{set-socket-option}} and
 {{get-socket-option}} at level {{sol/socket}}.
@@ -730,6 +751,10 @@ Socket-level socket options for use with {{set-socket-option}} and
 ==== TCP-level constants
 
 <constant>tcp/nodelay</constant><br>
+<constant>tcp/nopush</constant><br>
+<constant>tcp/noopt</constant><br>
+<constant>tcp/keepalive</constant><br>
+<constant>tcp/maxseg</constant><br>
 
 TCP-level socket options for use with {{set-socket-option}} and
 {{get-socket-option}} at level {{ipproto/tcp}}.
@@ -740,9 +765,17 @@ TCP-level socket options for use with {{set-socket-option}} and
 <constant>ip/hdrincl</constant><br>
 <constant>ip/tos</constant><br>
 <constant>ip/ttl</constant><br>
+<constant>ip/mtu</constant><br>
+<constant>ip/mtu-discover</constant><br>
+<constant>ip/pktinfo</constant><br>
+<constant>ip/recverr</constant><br>
+<constant>ip/recvtos</constant><br>
+<constant>ip/recvttl</constant><br>
+<constant>ip/router-alert</constant><br>
 <constant>ip/recvopts</constant><br>
 <constant>ip/recvretopts</constant><br>
 <constant>ip/retopts</constant><br>
+<constant>ip/recvdstaddr</constant><br>
 <constant>ip/multicast-if</constant><br>
 <constant>ip/multicast-ttl</constant><br>
 <constant>ip/multicast-loop</constant><br>

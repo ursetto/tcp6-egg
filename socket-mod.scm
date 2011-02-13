@@ -4,7 +4,7 @@
  sock/stream sock/dgram sock/raw ;; sock/seqpacket
  ipproto/tcp ipproto/udp
  ai/canonname ai/numerichost ai/passive
- ai/numericserv ai/addrconfig ai/v4mapped ai/all ai/mask ai/default  ;; may not be implemented
+ ai/numericserv ai/addrconfig ai/v4mapped ai/all ai/mask ai/default  ;; 0 if not implemented
  ni/numerichost ni/numericserv ni/dgram ni/namereqd ni/nofqdn
 
  integer->address-family integer->protocol-type integer->socket-type
@@ -43,16 +43,29 @@
  so/reuseaddr so/debug so/acceptconn so/keepalive so/dontroute
  so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
  so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
- tcp/nodelay
- ip/options ip/hdrincl ip/tos ip/ttl ip/recvopts ip/recvretopts ip/retopts
- ip/multicast-if ip/multicast-ttl ip/multicast-loop ip/add-membership ip/drop-membership
- ipv6/v6only
+ so/useloopback so/reuseport so/timestamp
+ 
+ tcp/nodelay tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
+
+ ip/options ip/hdrincl ip/tos ip/ttl ip/mtu ip/mtu-discover
+ ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert
+ ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
+ ip/multicast-if ip/multicast-ttl ip/multicast-loop
+ ip/add-membership ip/drop-membership
+
+ ipv6/v6only ipv6/addrform ipv6/mtu ipv6/mtu-discover
+ ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
+ ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
+ ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
+ ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
+ 
  sol/socket ipproto/ip ipproto/ipv6 ipproto/icmp
+ 
  get-socket-option set-socket-option
  so-reuse-address? so-debug? so-error so-type
  so-accept-connections? so-keep-alive? so-dont-route? so-broadcast? so-oob-inline?
  so-send-buffer so-receive-buffer so-send-low-water so-receive-low-water
- tcp-no-delay?
+ tcp-no-delay? tcp-max-segment-size tcp-no-push? tcp-no-options? tcp-keep-alive
  ip-header-included? ip-type-of-service ip-time-to-live
  ipv6-v6-only?
 

@@ -58,26 +58,48 @@
 ;;(require-library srfi-13) ;;?
 (import-for-syntax srfi-13)
 
-;; (local 'so/reuseaddr) => '_so_reuseaddr
-(define-for-syntax (local s)
+;; ;; (local 'ip/multicast-ttl) => '_ip_multicast_ttl
+;; (define-for-syntax (local s)
+;;   (string->symbol
+;;    (string-append "_" (string-translate (symbol->string s) "/-" #\_))))
+;; (local 'ip/multicast-ttl) => 'IP_MULTICAST_TTL
+(define-for-syntax (local sym)
   (string->symbol
-   (string-append "_" (string-translate (symbol->string s) "/" "_"))))
+   (string-translate (string-upcase (symbol->string sym)) "/-" #\_)))
+;; (c-name 'ip/multicast-ttl) => "IP_MULTICAST_TTL"
+(define-for-syntax (c-name sym)
+  (string-translate (string-upcase (symbol->string sym)) "/-" #\_))
 
-;; (c-name 'so/reuseaddr) => "SO_REUSEADDR"
+;; If socket option is undefined in C, #define it to -1.  We use that
+;; value in the foreign-variable to denote "undefined".  Safe unless
+;; we encounter negative value socket options.
+(define-syntax declare-foreign-sockopt
+  (er-macro-transformer
+   (lambda (e r c)
+     (let ((cname (c-name (cadr e))))
+       `(,(r 'foreign-declare)
+         ,(sprintf "#ifndef ~A\n#define ~A -1\n#endif\n" cname cname))))))
+(define-syntax declare-foreign-sockopts
+  (er-macro-transformer
+   (lambda (e r c)
+     `(,(r 'begin)
+       ,@(map (lambda (sym) `(,(r 'declare-foreign-sockopt) ,sym))
+              (cdr e))))))
+
+
 ;; (define-socket-int so/reuseaddr) =>
-;;    (begin (define-foreign-variable _so_reuseaddr "SO_REUSEADDR")
-;;           (define so/reuseaddr _so_reuseaddr))
+;;    (begin (define-foreign-variable SO_REUSEADDR "SO_REUSEADDR")
+;;           (define so/reuseaddr (if (= SO_REUSEADDR -1) #f SO_REUSEADDR)))
 (define-syntax define-socket-int
   (er-macro-transformer
    (lambda (e r c)
-     (define (c-name sym)
-       (string-translate (string-upcase (symbol->string sym)) "/" "_"))
      (let ((sym (cadr e))
            (str (cddr e)))
-       (let ((str (if (pair? str) (car str) (c-name sym))))
+       (let ((str (if (pair? str) (car str) (c-name sym)))
+             (lname (local sym)))
          `(,(r 'begin)
-           (,(r 'define-foreign-variable) ,(local sym) ,(r 'int) ,str)
-           (,(r 'define) ,sym ,(local sym))))))))
+           (,(r 'define-foreign-variable) ,lname ,(r 'int) ,str)
+           (,(r 'define) ,sym (,(r 'if) (,(r '=) ,lname -1) #f ,lname))))))))
 
 (define-syntax define-socket-ints
   (er-macro-transformer
@@ -89,16 +111,24 @@
                     `(,(r 'define-socket-int) ,sym)))
               (cdr e))))))
 
-;; (define-socket-option tcp-no-delay ipproto/tcp tcp/nodelay set-int get-int) =>
-;;   (begin
-;;     (define tcp-no-delay
+;; (define-socket-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only set-boolean-option get-boolean-option) =>
+;; (begin
+;;   (define ipv6-v6-only?
+;;     (if (or (= _ipproto_ipv6 -1) (= _ipv6_v6only -1))
 ;;       (getter-with-setter
-;;         (lambda (s) (get-int s _ipproto_tcp _tcp_nodelay))
-;;         (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
-;;     ;; Named setter is no longer created
-;;     ;; (define tcp-no-delay-set!
-;;     ;;  (lambda (s v) (set-int s _ipproto_tcp _tcp_nodelay v))))
+;;         (lambda (s)
+;;           (unsupported-error 'ipv6-v6-only? "socket option or level unsupported"))
+;;         (lambda (s v)
+;;           (unsupported-error 'ipv6-v6-only? "socket option or level unsupported")))
+;;       (getter-with-setter
+;;         (lambda (s) (get-boolean-option s _ipproto_ipv6 _ipv6_v6only))
+;;         (lambda (s v) (set-boolean-option s _ipproto_ipv6 _ipv6_v6only v))))))
 
+;; When option or level undefined, define the procedure to simply
+;; return a nice error.  We could pass an invalid option or level
+;; (such as -1) through to get/setsockopt, but this is more meaningful
+;; and safer.  (Note this does use the foreign-vars instead of
+;; the constants, so it needs to test for -1 instead of #f.)
 (define-syntax define-socket-option
   (er-macro-transformer
    (lambda (e r c)
@@ -111,8 +141,17 @@
            (get (cadr (cddddr e))))
        `(,(r 'begin)
           (,(r 'define) ,name
-           (getter-with-setter (,(r 'lambda) (s) (,get s ,(local level) ,(local optname)))
-                               (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v))))
+           (,(r 'if) (,(r 'or)
+                      (,(r '=) ,(local level) -1)
+                      (,(r '=) ,(local optname) -1))
+            (,(r 'getter-with-setter)
+             (,(r 'lambda) (s)
+              (,(r 'unsupported-error) ',name "socket option unavailable on this platform"))
+             (,(r 'lambda) (s v)
+              (,(r 'unsupported-error) ',name "socket option unavailable on this platform")))
+            (,(r 'getter-with-setter)
+             (,(r 'lambda) (s) (,get s ,(local level) ,(local optname)))
+             (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v)))))
           ;; (,(r 'define) ,(setter-symbol name)
           ;;  (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v)))
           )))))
@@ -208,19 +247,26 @@
 |#
 
 (define (set-socket-option s level name val)
-  (let ((s (if (socket? s) (socket-fileno s) s)))
-    (cond ((boolean? val)
-           (set-boolean-option s level name val))
-          ((fixnum? val)
-           (set-integer-option s level name val))
-          ((blob? val)
-           (check-error (setsockopt s level name val (blob-size val)) 'set-socket-option))
-          ((string? val)
-           (check-error (setsockopt s level name val (string-length val)) 'set-socket-option))
-          (else
-           (##sys#signal-hook #:type-error
-                              'set-socket-option
-                              "bad option value" val)))))
+  (cond ((not level)
+         (unsupported-error 'set-socket-option "socket option level not supported" s))
+        ((not name)
+         (unsupported-error 'set-socket-option "socket option not supported" s))
+        (else
+         (let ((s (if (socket? s) (socket-fileno s) s)))
+           (cond ((boolean? val)
+                  (set-boolean-option s level name val))
+                 ((fixnum? val)
+                  (set-integer-option s level name val))
+                 ((blob? val)
+                  (check-error (setsockopt s level name val (blob-size val))
+                               'set-socket-option))
+                 ((string? val)
+                  (check-error (setsockopt s level name val (string-length val))
+                               'set-socket-option))
+                 (else
+                  (##sys#signal-hook #:type-error
+                                     'set-socket-option
+                                     "bad option value" val)))))))
 
 ;; Get socket option on socket S at socket level LEVEL with option name NAME.
 ;; If len is #f (the default) it assumes the option is an integer value.
@@ -230,46 +276,76 @@
 ;; (get-socket-option s sol/socket so/reuseaddr 1024) => #${04000000}
 ;; (get-socket-option s sol/socket so/reuseaddr)      => 4
 (define (get-socket-option s level name #!optional len)
-  (if (not len)
-      (get-integer-option s level name)
-      (let ((buf (make-blob len)))
-        (let-location ((sz int len))
-          (let ((s (if (socket? s) (socket-fileno s) s)))
-            (check-error (getsockopt s level name buf (location sz)) 'get-socket-option))
-          (if (= sz len)
-              buf
-              (let ((retbuf (make-blob sz)))
-                ((foreign-lambda void C_memcpy scheme-pointer scheme-pointer int)
-                 retbuf buf sz)
-                retbuf))))))
+  (cond ((not level)
+         (unsupported-error 'get-socket-option "socket option level not supported" s))
+        ((not name)
+         (unsupported-error 'get-socket-option "socket option not supported" s))
+        ((not len)
+         (get-integer-option s level name))
+        (else
+         (let ((buf (make-blob len)))
+           (let-location ((sz int len))
+             (let ((s (if (socket? s) (socket-fileno s) s)))
+               ;; FIXME: Report unsupported error correctly
+               (check-error (getsockopt s level name buf (location sz)) 'get-socket-option))
+             (if (= sz len)
+                 buf
+                 (let ((retbuf (make-blob sz)))
+                   ((foreign-lambda void C_memcpy scheme-pointer scheme-pointer int)
+                    retbuf buf sz)
+                   retbuf)))))))
 
 ;;; socket integers
+
+(declare-foreign-sockopts        ;; #ifndef, then #define these to -1
+ so/reuseport so/timestamp
+
+ tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
+
+ ip/mtu ip/mtu-discover
+ ip/recverr ip/recvtos ip/recvttl ip/router-alert 
+ ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
+
+ ;; There's probably a subset of these that we can rely on (i.e. error out on if undefined)
+ ;; Either that or just make everything optional
+ ipv6/v6only ipv6/addrform ipv6/mtu
+ ipv6/mtu-discover ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
+ ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
+ ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
+ ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
+
+ ipproto/ipv6 
+)
 
 (define-socket-ints
 ;; socket options
   so/reuseaddr so/debug so/acceptconn so/keepalive so/dontroute
   so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
   so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
-; so/useloopback so/reuseport so/timestamp  
+  so/useloopback so/reuseport so/timestamp
 
 ;; tcp options
   tcp/nodelay
-; tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
+  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
 ;; ip options
-  ip/options ip/hdrincl ip/tos ip/ttl ip/recvopts ip/recvretopts ip/retopts
-; ip/recvdstaddr
-  (ip/multicast-if "IP_MULTICAST_IF")
-  (ip/multicast-ttl "IP_MULTICAST_TTL")
-  (ip/multicast-loop "IP_MULTICAST_LOOP")
-  (ip/add-membership "IP_ADD_MEMBERSHIP")
-  (ip/drop-membership "IP_DROP_MEMBERSHIP")
+  ip/options ip/hdrincl ip/tos ip/ttl ip/mtu ip/mtu-discover
+  ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert
+  ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
+  ip/multicast-if ip/multicast-ttl ip/multicast-loop
+  ip/add-membership ip/drop-membership
 
 ;; ipv6 options
-  ipv6/v6only
-
+  ipv6/v6only ipv6/addrform ipv6/mtu ipv6/mtu-discover
+  ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
+  ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
+  ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
+  ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
+  ;; ipv6/add-membership ipv6/drop-membership   ;; OBSOLETE synonyms for JOIN/LEAVE_GROUP
+  ;; ipv6/options ipv6/recvopts ipv6/recvretopts ipv6/retopts ipv6/recvdstaddr ;; DEPRECATED
+  
 ;; socket levels
-  sol/socket ipproto/ip ipproto/ipv6 ipproto/icmp
+  sol/socket ipproto/ip ipproto/icmp ipproto/ipv6
 ; ipproto/tcp ipproto/udp            ;; already provided in socket.scm
 )
 
@@ -295,15 +371,16 @@
 ;;; TCP options
 
 (define-boolean-option tcp-no-delay? ipproto/tcp tcp/nodelay)
-;(define-integer-option tcp-max-segment-size ipproto/tcp tcp/maxseg)
-;(define-boolean-option tcp-no-push ipproto/tcp tcp/nopush)
-;(define-boolean-option tcp-no-options ipproto/tcp tcp/noopt)
-;(define-integer-option tcp-keep-alive ipproto/tcp tcp/keepalive)
+(define-integer-option tcp-max-segment-size ipproto/tcp tcp/maxseg)
+(define-boolean-option tcp-no-push ipproto/tcp tcp/nopush)
+(define-boolean-option tcp-no-options ipproto/tcp tcp/noopt)
+(define-integer-option tcp-keep-alive ipproto/tcp tcp/keepalive)
 
 ;;; IP options
 
 ;; Most of the IP option interface is currently unimplemented as it
 ;; seems to differ widely between systems.
+;; TODO Multicast should be implemented if present.
 (define-boolean-option ip-header-included? ipproto/ip ip/hdrincl)
 (define-integer-option ip-type-of-service ipproto/ip ip/tos)
 (define-integer-option ip-time-to-live ipproto/ip ip/ttl)

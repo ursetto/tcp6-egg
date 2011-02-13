@@ -156,6 +156,24 @@ char *skt_strerror(int err) {
   (apply ##sys#signal-hook #:network-error where
          (string-append msg " - " (strerror err))
          args))
+(define-inline (transient-network-error/errno* where err msg . args)
+  (abort
+   (make-composite-condition
+    (make-property-condition 'exn 'location where
+                             'message (string-append msg " - " (strerror err))
+                             'arguments args)
+    (make-property-condition 'i/o)
+    (make-property-condition 'net 'errno err)
+    (make-property-condition 'transient))))
+(define-inline (unsupported-error where msg . args)
+  (abort
+   (make-composite-condition
+    (make-property-condition 'exn 'location where
+                             'message msg
+                             'arguments args)
+    (make-property-condition 'i/o)
+    (make-property-condition 'net)
+    (make-property-condition 'unsupported))))
 
 ;;; constants
 
@@ -195,10 +213,10 @@ char *skt_strerror(int err) {
 ;; These are for address-information, not socket options -- so TCP and UDP only.
 (define-foreign-enum-type (protocol-type int)
   (protocol-type->integer integer->protocol-type)
-  ((ipproto/tcp _ipproto_tcp)  IPPROTO_TCP)
-  ((ipproto/udp _ipproto_udp)  IPPROTO_UDP))
-(define ipproto/tcp _ipproto_tcp)
-(define ipproto/udp _ipproto_udp)
+  ((ipproto/tcp IPPROTO_TCP)  IPPROTO_TCP)
+  ((ipproto/udp IPPROTO_UDP)  IPPROTO_UDP))
+(define ipproto/tcp IPPROTO_TCP)
+(define ipproto/udp IPPROTO_UDP)
 
 (define-foreign-variable AI_CANONNAME int "AI_CANONNAME")
 (define ai/canonname AI_CANONNAME)
@@ -640,16 +658,6 @@ char *skt_strerror(int err) {
                            (non-nil (integer->socket-type socktype) socktype)
                            (non-nil (integer->protocol-type protocol) protocol)))
     (make-socket s family socktype protocol)))
-
-(define-inline (transient-network-error/errno* where err msg . args)
-  (abort
-   (make-composite-condition
-    (make-property-condition 'exn 'location where
-                              'message (string-append msg " - " (strerror err))
-                             'arguments args)
-    (make-property-condition 'i/o)
-    (make-property-condition 'net 'errno err)
-    (make-property-condition 'transient))))
 
 (use srfi-18)
 
