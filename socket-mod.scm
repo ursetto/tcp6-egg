@@ -44,6 +44,7 @@
  so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
  so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
  so/useloopback so/reuseport so/timestamp
+ so/exclusiveaddruse ;win
  
  tcp/nodelay tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 

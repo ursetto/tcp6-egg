@@ -302,7 +302,7 @@
 ;;; socket integers
 
 (declare-foreign-sockopts        ;; #ifndef, then #define these to -1
- so/reuseport so/timestamp
+ so/reuseport so/timestamp so/exclusiveaddruse
 
  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
@@ -326,7 +326,7 @@
   so/reuseaddr so/debug so/acceptconn so/keepalive so/dontroute
   so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
   so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
-  so/useloopback so/reuseport so/timestamp
+  so/useloopback so/reuseport so/timestamp so/exclusiveaddruse
 
 ;; tcp options
   tcp/nodelay
@@ -353,9 +353,33 @@
 ; ipproto/tcp ipproto/udp            ;; already provided in socket.scm
 )
 
+;;; socket-level option helpers
+
+(cond-expand
+ (windows
+  ;; Windows semantics of so/reuseaddr are basically nonsense,
+  ;; so use so/exclusiveaddruse for correct semantics.  However,
+  ;; this may fail without admin privs on WinXP<SP3 and Win2k<SP4,
+  ;; so on failure fall back to so/reuseaddr (better than nothing).
+  (define (set-reuse-option where s level name val)
+    (handle-exceptions exn
+        (set-boolean-option where s level so/reuseaddr val)
+      (set-boolean-option where s level name val)))
+  (define (get-reuse-option where s level name)
+    (handle-exceptions exn
+        (get-boolean-option where s level so/reuseaddr)
+      (get-boolean-option where s level name))))
+ (else))
+
 ;;; socket-level options
 
-(define-boolean-option so-reuse-address? sol/socket so/reuseaddr)
+(cond-expand
+ (windows
+  (define-socket-option so-reuse-address? sol/socket so/exclusiveaddruse
+                        set-reuse-option get-reuse-option))
+ (else
+  (define-boolean-option so-reuse-address? sol/socket so/reuseaddr)))
+
 (define-boolean-option so-debug? sol/socket so/debug)
 (define-socket-option  so-accept-connections? sol/socket so/acceptconn set-readonly-option get-boolean-option)
 (define-boolean-option so-keep-alive? sol/socket so/keepalive)
