@@ -141,6 +141,8 @@
            (get (cadr (cddddr e))))
        `(,(r 'begin)
           (,(r 'define) ,name
+           ;; We could move this test into the getters and setters; little
+           ;; advantage on either side.
            (,(r 'if) (,(r 'or)
                       (,(r '=) ,(local level) -1)
                       (,(r '=) ,(local optname) -1))
@@ -150,10 +152,10 @@
              (,(r 'lambda) (s v)
               (,(r 'unsupported-error) ',name "socket option unavailable on this platform")))
             (,(r 'getter-with-setter)
-             (,(r 'lambda) (s) (,get s ,(local level) ,(local optname)))
-             (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v)))))
+             (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
+             (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v)))))
           ;; (,(r 'define) ,(setter-symbol name)
-          ;;  (,(r 'lambda) (s v) (,set s ,(local level) ,(local optname) v)))
+          ;;  (,(r 'lambda) (s v) (,set ',(setter-symbol name) s ,(local level) ,(local optname) v)))
           )))))
 
 (define-syntax define-boolean-option
@@ -181,11 +183,9 @@
 
 ;;; getters and setters
 
-(define (##sys#check-boolean x . y)
+(define-inline (check-boolean where x)
   (unless (boolean? x)
-    (##sys#signal-hook #:type-error
-                       (and (pair? y) (car y))
-                       "bad argument type: not a boolean" x)))
+    (type-error where "bad argument type: not a boolean" x)))
 (define-inline (check-error where err)
   (let ((no errno))
     (when (fx= -1 err)
@@ -196,28 +196,28 @@
             (##sys#update-errno)
             (##sys#signal-hook #:network-error where (strerror no)))))))
 
-(define (set-integer-option s level name val)
-  (##sys#check-exact val 'set-socket-option)
+(define (set-integer-option where s level name val)
+  (##sys#check-exact val where)
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (let ((err (setsockopt/int s level name val)))
-      (check-error 'set-socket-option err)
+      (check-error where err)
       (void))))
 
-(define (set-boolean-option s level name val)
-  (##sys#check-boolean val 'set-socket-option)
-  (set-integer-option s level name (if val 1 0)))
-(define (get-boolean-option s level name)
-  (not (= 0 (get-integer-option s level name))))
+(define (set-boolean-option where s level name val)
+  (check-boolean where val)
+  (set-integer-option where s level name (if val 1 0)))
+(define (get-boolean-option where s level name)
+  (not (= 0 (get-integer-option where s level name))))
 
-(define (get-integer-option s level name)
+(define (get-integer-option where s level name)
   (let ((s (if (socket? s) (socket-fileno s) s)))
     (let-location ((val int))
       (let ((err (getsockopt/int s level name (location val))))
-        (check-error 'get-socket-option err)
+        (check-error where err)
         val))))
 
-(define (set-readonly-option s level name val)  ; don't get a symbol here, only an int -- fixme?
-  (error 'set-socket-option "socket option is read-only"))
+(define (set-readonly-option where s level name val)
+  (network-error where "socket option is read-only"))
 
 ;;; generic lowlevel interface
 
