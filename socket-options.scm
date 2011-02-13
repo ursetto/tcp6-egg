@@ -252,15 +252,15 @@
 
 (define (set-socket-option s level name val)
   (cond ((not level)
-         (unsupported-error 'set-socket-option "socket option level not supported" s))
+         (unsupported-error 'set-socket-option "socket option level not supported"))
         ((not name)
-         (unsupported-error 'set-socket-option "socket option not supported" s))
+         (unsupported-error 'set-socket-option "socket option not supported"))
         (else
          (let ((s (if (socket? s) (socket-fileno s) s)))
            (cond ((boolean? val)
-                  (set-boolean-option s level name val))
+                  (set-boolean-option 'set-socket-option s level name val))
                  ((fixnum? val)
-                  (set-integer-option s level name val))
+                  (set-integer-option 'set-socket-option s level name val))
                  ((blob? val)
                   (check-error 'set-socket-option
                                (setsockopt s level name val (blob-size val))))
@@ -281,11 +281,11 @@
 ;; (get-socket-option s sol/socket so/reuseaddr)      => 4
 (define (get-socket-option s level name #!optional len)
   (cond ((not level)
-         (unsupported-error 'get-socket-option "socket option level not supported" s))
+         (unsupported-error 'get-socket-option "socket option level not supported"))
         ((not name)
-         (unsupported-error 'get-socket-option "socket option not supported" s))
+         (unsupported-error 'get-socket-option "socket option not supported"))
         ((not len)
-         (get-integer-option s level name))
+         (get-integer-option 'get-socket-option s level name))
         (else
          (let ((buf (make-blob len)))
            (let-location ((sz int len))
@@ -307,7 +307,7 @@
  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
  ip/mtu ip/mtu-discover
- ip/recverr ip/recvtos ip/recvttl ip/router-alert 
+ ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert 
  ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
 
  ;; There's probably a subset of these that we can rely on (i.e. error out on if undefined)
@@ -376,8 +376,8 @@
 
 (define-boolean-option tcp-no-delay? ipproto/tcp tcp/nodelay)
 (define-integer-option tcp-max-segment-size ipproto/tcp tcp/maxseg)
-(define-boolean-option tcp-no-push ipproto/tcp tcp/nopush)
-(define-boolean-option tcp-no-options ipproto/tcp tcp/noopt)
+(define-boolean-option tcp-no-push? ipproto/tcp tcp/nopush)
+(define-boolean-option tcp-no-options? ipproto/tcp tcp/noopt)
 (define-integer-option tcp-keep-alive ipproto/tcp tcp/keepalive)
 
 ;;; IP options
