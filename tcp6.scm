@@ -41,11 +41,22 @@
 (define-inline (tcp-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))
 
-;; Force tcp4 for (tcp-listen port) when v6only enabled.  This will fail
-;; on an IPv6-only system.  Assume when host is unspecified, the first addrinfo
-;; result on a dual-stack system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
+(define *support-ipv6-v6only?*
+  (let ((s #f))
+    (let ((rc (handle-exceptions exn #f
+                (set! s (socket af/inet6 sock/stream))  ;; test ipv6 (and save?)
+                (set! (ipv6-v6-only? s) #t)             ;; test v6only
+                #t)))
+      (when s (socket-close* s))
+      rc)))
+
+;; Force tcp4 for (tcp-listen port) when v6only enabled or
+;; unsupported.  This will fail on an IPv6-only system.  Assume when
+;; host is unspecified, the first addrinfo result on a dual-stack
+;; system is "::".  If it is "0.0.0.0", IPv6 will be disabled.
 (define (bind-tcp-socket port host)
-  (let* ((family (if (and (not host) (tcp-bind-ipv6-only))
+  (let* ((family (if (and (not host) (or (tcp-bind-ipv6-only)
+                                         (not *support-ipv6-v6only?*)))
 		     af/inet #f))
 	 (ai (address-information host port family: family
 				  type: sock/stream flags: ai/passive)))
@@ -55,9 +66,11 @@
 	   (addr (addrinfo-address ai)))
     (let* ((so (socket (addrinfo-family ai) (addrinfo-socktype ai) 0))
 	   (s (socket-fileno so)))
-      (set! (so-reuse-address? so) #t)
       (when (= (addrinfo-family ai) af/inet6)
-        (set! (ipv6-v6-only? so) (tcp-bind-ipv6-only)))
+        (when *support-ipv6-v6only?*
+          ;; TODO: If host is not #f, can probably omit setting v6only.
+          (set! (ipv6-v6-only? so) (tcp-bind-ipv6-only))))
+      (set! (so-reuse-address? so) #t)
       (socket-bind so addr)
       so))))
 
