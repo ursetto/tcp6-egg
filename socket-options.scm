@@ -302,7 +302,7 @@
 ;;; socket integers
 
 (declare-foreign-sockopts        ;; #ifndef, then #define these to -1
- so/reuseport so/timestamp so/exclusiveaddruse
+ so/useloopback so/reuseport so/timestamp so/exclusiveaddruse
 
  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
