@@ -1,7 +1,5 @@
 ;;; socket extension
 
-;; FIXME! name-information now requires service arg, which screws up passing just sockaddr
-
 ;;; License
 
 ;; Some code was derived from Chicken core tcp.scm.
