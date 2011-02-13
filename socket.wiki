@@ -606,7 +606,10 @@ incorrect type, or if you try to set a read-only option.
 
 An error of {{(exn i/o net unsupported)}} is thrown if you try to use
 a socket option that is not defined at all on the platform, or that is
-defined but not supported by the operating system.
+defined but not supported by the operating system.  Note that some
+platforms, particularly Windows, may return a false positive for
+"unsupported option" when it really indicates a usage error (wrong
+socket type or option value).
 
 === Socket option accessors
 
