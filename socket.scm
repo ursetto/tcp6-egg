@@ -41,6 +41,9 @@
 (use foreigners)
 (use srfi-4 extras ports)
 (use (only srfi-13 string-index))
+;; Pull TCP in w/o importing so ##sys#tcp-port->fileno is defined
+;; and network is started up.
+(require-library tcp)
 
 (foreign-declare "
 #include <errno.h>
@@ -1318,8 +1321,9 @@ char *skt_strerror(int err) {
 #endif
 "))
 
-(unless (socket-startup)   ;; hopefully, this is safe to run multiple times
-  (network-error 'socket-startup "cannot initialize socket code"))
+;; We require unit tcp above so this should already be done.
+;; (unless (socket-startup)   ;; hopefully, this is safe to run multiple times
+;;   (network-error 'socket-startup "cannot initialize socket code"))
 
 ;;; Notes / TODOs
 
