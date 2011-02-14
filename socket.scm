@@ -1098,13 +1098,28 @@ char *skt_strerror(int err) {
 
 ;;; ports
 
+;; FIXME: port->fileno calls ##sys#tcp-port->fileno and requires the TCP
+;; core unit to be loaded.  Theoretically, we could define this ourselves,
+;; and avoid this crap with compatible socket ports.  However, this would
+;; require tcp to be loaded first so it does not overwrite our export.
+;; Also keep in mind it cannot be defined inside a module.
+
+;; We unfortunately must maintain compatibility with Unit tcp ports so
+;; that port->fileno works (relied on by, e.g., sendfile).  Thus we
+;; must have port of type 'socket and vector port data containing the
+;; fileno as slot 0.  So procedures in Unit TCP that take ports will
+;; accept our ports and possibly crash :(  However, we can avoid taking
+;; TCP ports here by adding unique data to the end of the structure.
 (define-inline (socket-port-data p)
-  (##sys#check-port p 'socket-abandon-port)
-  (unless (eq? (##sys#slot p 7)
-	       'socket6)            ;; port data has no header (right now); use port type id
-    (type-error 'socket-port-data "argument is not a socket port" p))
-  (##sys#port-data p))
-(define-inline (%socket-port-data-socket data)            (##sys#slot data 0))
+  (or (and (eq? (##sys#slot p 7) 'socket)
+           (let ((d (##sys#port-data p)))
+             (and (vector? d)
+                  (= (vector-length d) 7)
+                  (eq? (##sys#slot d 5) 'socket6)
+                  d)))
+      (type-error 'socket-port-data "argument is not a socket port" p)))
+
+(define-inline (%socket-port-data-socket data)            (##sys#slot data 6))
 (define-inline (%socket-port-data-input-abandoned? data)  (##sys#slot data 1))
 (define-inline (%socket-port-data-output-abandoned? data) (##sys#slot data 2))
 
@@ -1116,7 +1131,7 @@ char *skt_strerror(int err) {
       (let* ((fd (socket-fileno so))
              (input-buffer-size (socket-receive-buffer-size))
 	     (buf (make-string input-buffer-size))
-	     (data (vector so #f #f buf 0))  ;; Native socket ports have fd in slot 0.
+	     (data (vector fd #f #f buf 0 'socket6 so))
 	     (buflen 0)
 	     (bufindex 0)
 	     (iclosed #f) 
@@ -1279,8 +1294,8 @@ char *skt_strerror(int err) {
 			(set! outbufindex 0) ) ) ) ) ) )
 	(##sys#setslot in 3 "(socket)")
 	(##sys#setslot out 3 "(socket)")
-	(##sys#setslot in 7 'socket6)
-	(##sys#setslot out 7 'socket6)
+	(##sys#setslot in 7 'socket)      ;; compatibility with core socket ports
+	(##sys#setslot out 7 'socket)
 	(##sys#set-port-data! in data)
 	(##sys#set-port-data! out data)
 	(values in out) ) ) ) 
@@ -1321,4 +1336,5 @@ socket ports work with datagrams
 Socket type (slot 7) is deliberately set to "socket6" instead of "socket" to prevent
 port->fileno from accessing port data (which is in a different format).  This is hardcoded
 in the core library.
+  --However this prevents the sendfile egg from using the fastpath!  This is a critical bug.
 |#
