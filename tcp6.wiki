@@ -10,8 +10,9 @@ supports both IPv4 and IPv6.
 This extension provides facilities for communicating over TCP sockets
 with an interface that is backwards-compatible with [[/man/4/Unit
 tcp|Unit tcp]].  It is implemented on top of the
-[[/egg/socket|socket]] egg and consequently supports IPv6 and
-non-blocking operations on Windows.
+[[/egg/socket|socket]] egg and consequently supports IPv6,
+non-blocking operations on Windows, and correct error detection
+on Windows.
 
 All errors related to failing network operations will raise a
 condition of kind {{(exn i/o net)}}.  Timeouts raise the error {{(exn

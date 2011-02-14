@@ -536,9 +536,10 @@ at a time and send 128-, 256-, 384- or 512-byte datagrams at a time:
 <procedure>(socket-i/o-port->socket p)</procedure>
 
 Returns the socket object assocated with input or output port P.  From
-there you can obtain a file descriptor with {{socket-fileno}}.  Note
-that {{port->fileno}} from [[/man/4/Unit posix|posix]] does not
-operate correctly on the socket ports created by this extension.
+there you can obtain a file descriptor with {{socket-fileno}}.
+
+Alternatively, {{port->fileno}} from [[/man/4/Unit posix|posix]] is
+supported to obtain a file descriptor.  (Also see [[#Bugs and limitations]].)
 
 <procedure>(socket-abandon-port p)</procedure>
 
@@ -868,6 +869,17 @@ default on Linux, but not Solaris or OS X.
                    (set! (tcp-no-delay? (tcp-listener-fileno L) #t))
                    L))))
    ((http:make-server ...)))
+
+== Bugs and limitations
+
+* In order to support {{port->fileno}}, socket ports are
+  backwardly-compatible with core tcp ports to the extent that
+  port-related procedures from [[/man/4/Unit tcp|Unit tcp]] will
+  erroneously accept socket ports as well.  These procedures are
+  {{tcp-abandon-port}}, {{tcp-addresses}}, and {{tcp-port-numbers}}.
+  Using them with socket ports has an undefined result.  The other way
+  around is safe: procedures in this extension will throw an error if
+  used with core tcp ports.
 
 == About this egg
 
