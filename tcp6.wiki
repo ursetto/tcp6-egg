@@ -35,8 +35,12 @@ connections (and defaults to 10).
 If the optional argument {{HOST}} is given and not {{#f}}, then only
 incoming connections for the given host (or IP) are accepted.
 
-When {{HOST}} is {{#f}}, it listens on all IPv4 and IPv6 addresses if
-possible, or just on IPv4 if IPv6 is disabled.
+When {{HOST}} is {{#f}} (the default), the behavior is
+system-dependent.  It ''should'' listen on all IPv4 and IPv6 addresses
+if possible, or just on IPv4 if IPv6 is disabled.  This is true on OS
+X and Windows.  Unfortunately, certain systems may always prefer to
+listen on IPv4 only (particularly those using recent glibc, like
+Ubuntu).
 
 Special note when {{HOST}} is {{#f}}.  If you have set
 {{(tcp-bind-ipv6-only #t)}}, or if {{tcp-bind-ipv6-only}} is not
@@ -44,6 +48,9 @@ supported by your OS, we ''always'' listen on {{"0.0.0.0"}} to IPv4 only.  This
 is done because users will expect {{(tcp-listen port)}} to listen at
 least on IPv4.  To listen to IPv6 only in this case, explicitly
 specify a {{HOST}} of {{"::"}}.
+
+Long story short, setting {{HOST}} to {{#f}} will more likely than not
+give you an IPv4-only listener.
 
 <procedure>(tcp-listener? X)</procedure>
 
