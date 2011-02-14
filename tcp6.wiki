@@ -247,7 +247,7 @@ IPv4 connections.
 This option is ignored when unsupported, such as on Windows 2000 and
 XP, whose IPv4 and IPv6 stacks are separate.
 
-=== Example
+== Example
 
 A very simple example follows. Say we have the two files {{client.scm}}
 and {{server.scm}}:
