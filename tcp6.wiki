@@ -10,7 +10,7 @@ supports both IPv4 and IPv6.
 This extension provides facilities for communicating over TCP sockets
 with an interface that is backwards-compatible with [[/man/4/Unit
 tcp|Unit tcp]].  It is implemented on top of the
-[[/egg/socket|socket]] egg and consequently supports IPv6,
+[[/egg/socket|socket]] egg and consequently supports IPv4 and IPv6,
 non-blocking operations on Windows, and correct error detection
 on Windows.
 
@@ -30,17 +30,20 @@ although it includes a few extensions: {{tcp-bind-v6-only}},
 
 Creates and returns a TCP listener object that listens for connections on {{TCPPORT}}, which
 should be an exact integer. {{BACKLOG}} specifies the number of maximally pending
-connections (and defaults to 4). 
+connections (and defaults to 10). 
 
 If the optional argument {{HOST}} is given and not {{#f}}, then only
 incoming connections for the given host (or IP) are accepted.
 
-When HOST is {{#f}}, it listens on all IPv4 and IPv6 addresses using a
-socket bound to {{"::"}}, the IPv6 unspecified address.
+When {{HOST}} is {{#f}}, it listens on all IPv4 and IPv6 addresses if
+possible, or just on IPv4 if IPv6 is disabled.
 
-However, if you have set {{(tcp-bind-ipv6-only #t)}}, we listen on
-{{"0.0.0.0"}} to IPv4 only.  To listen to IPv6 only in this case, use
-a HOST of {{"::"}}.
+Special note when {{HOST}} is {{#f}}.  If you have set
+{{(tcp-bind-ipv6-only #t)}}, or if {{tcp-bind-ipv6-only}} is not
+supported by your OS, we ''always'' listen on {{"0.0.0.0"}} to IPv4 only.  This
+is done because users will expect {{(tcp-listen port)}} to listen at
+least on IPv4.  To listen to IPv6 only in this case, explicitly
+specify a {{HOST}} of {{"::"}}.
 
 <procedure>(tcp-listener? X)</procedure>
 
@@ -80,7 +83,7 @@ then the system will choose a port-number for you.)
 <procedure>(tcp-listener-socket LISTENER)</procedure>
 
 Returns the socket object associated with {{LISTENER}}.  This
-procedure is an addition over [[/man/4/Unit tcp]].
+procedure is an addition over [[/man/4/Unit tcp|Unit tcp]].
 
 <procedure>(tcp-listener-fileno LISTENER)</procedure>
 
@@ -107,7 +110,7 @@ may return multiple addresses for a given hostname, including both
 IPv6 and IPv4 addresses.  {{tcp-connect}} will try each of these in
 turn until one succeeds.  See {{tcp-connect/ai}} for more information.
 For example, connecting to {{"localhost:ssh"}} may connect to
-{{"[::1]:22"}}, {{"fe80::1%lo"}}, and {{"127.0.0.1:22"}} in turn,
+{{"[::1]:22"}}, {{"[fe80::1%lo0]:22"}}, and {{"127.0.0.1:22"}} in turn,
 until an ssh listener is contacted.
 
 The current value of {{tcp-connect-timeout}} is used to determine the
@@ -131,9 +134,9 @@ unreachable) occurs, the next address in the list will be tried.  If
 all addresses fail, the last error encountered is propagated to the
 caller.  If a fatal socket error occurs then we terminate immediately.
 
-{{tcp-connect}} is equivalent to
+{{(tcp-connect host port)}} is equivalent to
 
- (tcp-connect/ai (address-information hostname tcpport))
+ (tcp-connect/ai (address-information host port))
 
 which may include IPv6 and IPv4 addresses.  To connect instead to
 {{localhost:22}} over IPv4 only:
@@ -178,8 +181,8 @@ for more information.
 Return the socket object associated with TCP input or output port
 {{PORT}}.  
 
-{{port->fileno}} from [[/man/4/posix|Unit posix]] cannot be
-used with TCP ports created by this egg.
+It is also possible to use {{port->fileno}} from
+[[/man/4/posix|Unit posix]] with TCP ports created by this egg.
 
 === Parameters
 
@@ -240,6 +243,9 @@ When {{#f}}, the default, IPv6 listening sockets will accept IPv6 or
 IPv4 connections when possible.  This is only relevant when listening on the
 unspecified address "::".  When {{#t}}, IPv6 listeners will not accept
 IPv4 connections.
+
+This option is ignored when unsupported, such as on Windows 2000 and
+XP, whose IPv4 and IPv6 stacks are separate.
 
 === Example
 

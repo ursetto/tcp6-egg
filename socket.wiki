@@ -872,6 +872,10 @@ default on Linux, but not Solaris or OS X.
 
 == Bugs and limitations
 
+* If IPv6 support is totally unavailable on your platform (not simply disabled)
+  then building this extension will fail.  This should be fixed in a future
+  release.
+
 * In order to support {{port->fileno}}, socket ports are
   backwardly-compatible with core tcp ports to the extent that
   port-related procedures from [[/man/4/Unit tcp|Unit tcp]] will
