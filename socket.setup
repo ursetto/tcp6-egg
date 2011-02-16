@@ -1,5 +1,7 @@
 ;; -*- scheme -*-
-(compile -s -O2 -d1 socket-mod.scm -o socket.so -j socket)
+(compile socket-features.scm)
+(run (./socket-features > socket-config.scm))
+(compile -s -O2 -d1 -X socket-config.scm socket-mod.scm -o socket.so -j socket)
 (compile -s -d0 socket.import.scm) 
 
 (install-extension

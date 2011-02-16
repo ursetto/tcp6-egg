@@ -108,11 +108,14 @@
   ((af/unspec AF_UNSPEC) AF_UNSPEC)
   ((af/inet AF_INET) AF_INET)
   ((af/inet6 AF_INET6) AF_INET6)
-  ((af/unix AF_UNIX) AF_UNIX))
+;; #+AF_UNIX ((af/unix AF_UNIX) AF_UNIX)
+  )
+#+AF_UNIX (define-foreign-variable AF_UNIX int AF_UNIX)
 (define af/unspec AF_UNSPEC)
 (define af/inet AF_INET)
 (define af/inet6 AF_INET6)
-(define af/unix AF_UNIX)
+(define af/unix (cond-expand (AF_UNIX AF_UNIX)
+                             (else #f)))
 
 (define-foreign-enum-type (socket-type int)
   (socket-type->integer integer->socket-type)
@@ -199,8 +202,9 @@
     (cond ((or (= af AF_INET)
                (= af AF_INET6))
            (car (getnameinfo A (+ NI_NUMERICHOST NI_NUMERICSERV))))
-          ((= af AF_UNIX)
-           (sockaddr-path A))
+          #? (AF_UNIX
+              ((= af AF_UNIX) (sockaddr-path A))
+              (#f #f))
           (else #f))))
 (define (sockaddr-port A)
   ((foreign-lambda* scheme-object ((scheme-pointer sa))
@@ -229,8 +233,10 @@
                  (if (= af AF_INET6)
                      (string-append "[" h "]" ":" p)
                      (string-append h ":" p)))))
-          ((= af AF_UNIX)
-           (sockaddr-path A))  ;; or reach directly into blob here
+          #?(AF_UNIX
+             ((= af AF_UNIX)
+              (sockaddr-path A)) ;; or reach directly into blob here
+             (#f #f))
           (else
            #f))))
 
@@ -958,22 +964,24 @@
 ;; UNIX sockets don't have a name; just return #f.
 (define (socket-name so)   ;; a legacy name
   (define _free (foreign-lambda void "C_free" c-pointer))
-  (if (eq? (socket-family so) AF_UNIX)
-      #f
-      (let-location ((len int))
-	(let ((sa (_getsockname (socket-fileno so) (location len))))
-	  (let ((err errno))
-	    (cond (sa
-		   (let ((addr (sa->sockaddr sa len)))
-		     (_free sa)
-		     (if (= 0 (sockaddr-port addr))
-			 #f
-			 addr)))
-		  (else
-		   (if (cond-expand (windows (eq? err _einval))
-				    (else #f))
-		       #f
-		       (network-error/errno 'socket-name "unable to get socket name" so)))))))))
+  (cond #? (AF_UNIX
+            ((eq? (socket-family so) AF_UNIX) #f)
+            (#f #f))
+        (else
+         (let-location ((len int))
+           (let ((sa (_getsockname (socket-fileno so) (location len))))
+             (let ((err errno))
+               (cond (sa
+                      (let ((addr (sa->sockaddr sa len)))
+                        (_free sa)
+                        (if (= 0 (sockaddr-port addr))
+                            #f
+                            addr)))
+                     (else
+                      (if (cond-expand (windows (eq? err _einval))
+                                       (else #f))
+                          #f
+                          (network-error/errno 'socket-name "unable to get socket name" so))))))))))
 
 (define (socket-peer-name so)
   (define _free (foreign-lambda void "C_free" c-pointer))

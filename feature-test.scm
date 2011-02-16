@@ -35,3 +35,43 @@
 
 (define R! (lambda (f) (printf "(register-feature! '~S)\n" f)))
 (define U! (lambda (f) (printf "(unregister-feature! '~S)\n" f)))
+
+;; (define ?!
+;;   (lambda ()
+;;     (write 
+;;      '(set-sharp-read-syntax! #\?
+;;                               (lambda (p)
+;;                                 (let ((ft (read p))
+;;                                       (body (read p)))
+;;                                   (if (feature? ft)
+;;                                       body
+;;                                       (values))))))
+;;     (newline)))
+
+
+(define ?!
+  (lambda ()
+    (for-each (lambda (x) (write x) (newline))
+              `(
+                (set-sharp-read-syntax!
+                  #\+ (lambda (p) (let ((ft (read p))
+                                   (body (read p)))
+                               (if (feature? ft)
+                                   body
+                                   '(values)))))    ;; should be (values) if reader patched
+                (set-sharp-read-syntax!
+                  #\- (lambda (p) (let ((ft (read p))
+                                   (body (read p)))
+                               (if (feature? ft)
+                                   '(values)        ;; should be (values) if reader patched
+                                   body))))
+                (set-sharp-read-syntax!
+                  #\? (lambda (p) (let* ((test (read p))
+                                    (ft (car test))
+                                   (con (cadr test))
+                                   (alt (cddr test)))
+                               (if (feature? ft)
+                                   con
+                                   (if (null? alt)
+                                       (values)
+                                       (car alt))))))))))
