@@ -178,6 +178,8 @@ Examples:
  (address-information #f "http" flags: ai/passive)
    ; => (#<addrinfo "[::]:80" af/inet6 sock/stream ipproto/tcp>
          #<addrinfo "0.0.0.0:80" af/inet sock/stream ipproto/tcp>)
+   ; As an example of inconsistent per-platform behavior, note that
+   ; recent Ubuntu among others returns the above in reverse order.
  (address-information "allie" 0 flags: ai/canonname)
    ; => (#<addrinfo "192.168.1.7" af/inet sock/stream ipproto/tcp
                     canonical: "allie.xorinia.dim">)
@@ -293,7 +295,7 @@ Examples:
   ;; IPv4 "127.0.0.1".  socket-connect/ai will try them all in order
   ;; and return a new connected socket.  For illustrative purposes
   ;; we use socket-peer-name to show where we connected.
-
+ 
   (socket-peer-name
    (socket-connect/ai (address-information "localhost" "ssh")))
   ; => #<sockaddr "[::1]:22">         ;; If ssh listening on ::1
@@ -641,6 +643,9 @@ Getters / setters for boolean and integer socket-level options, where S is a
 generalized set:
 
  (set! (so-reuse-address? s) #t)
+
+"(r/o)" indicates the option is read-only; an error will be raised if
+you attempt to set it.
 
 As a special note on {{so-reuse-address?}}, on Windows platforms it
 will first attempt to use option {{so/exclusiveaddruse}} because this
