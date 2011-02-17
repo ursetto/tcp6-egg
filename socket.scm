@@ -114,8 +114,7 @@
 (define af/unspec AF_UNSPEC)
 (define af/inet AF_INET)
 (define af/inet6 AF_INET6)
-(define af/unix (cond-expand (AF_UNIX AF_UNIX)
-                             (else #f)))
+(define af/unix #? (AF_UNIX AF_UNIX #f))
 
 (define-foreign-enum-type (socket-type int)
   (socket-type->integer integer->socket-type)
@@ -187,16 +186,6 @@
 
 (define (sockaddr-len A)
   (blob-size (sockaddr-blob A)))
-;; (define (sockaddr-path A)          ;; not supported on Windows
-;;   ((foreign-lambda* c-string ((scheme-pointer sa))
-;;      "switch (((struct sockaddr*)sa)->sa_family) {"
-;;      "case AF_UNIX: C_return(((struct sockaddr_un*)sa)->sun_path);"
-;;      "default: C_return(NULL); }"
-;;      )
-;;    (sockaddr-blob A)))
-(define (sockaddr-path A)
-  (error 'sockaddr-path "UNIX sockets are not supported"))
-
 (define (sockaddr-address A)
   (let ((af (sockaddr-family A)))
     (cond ((or (= af AF_INET)
@@ -206,6 +195,9 @@
               ((= af AF_UNIX) (sockaddr-path A))
               (#f #f))
           (else #f))))
+
+;; Port and path will return #f if called on the wrong sockaddr type.
+;; Maybe throw an error instead?
 (define (sockaddr-port A)
   ((foreign-lambda* scheme-object ((scheme-pointer sa))
      "switch (((struct sockaddr*)sa)->sa_family) {"
@@ -213,6 +205,15 @@
      "case AF_INET6: C_return(C_fix(ntohs(((struct sockaddr_in6*)sa)->sin6_port)));"
      "default: C_return(C_SCHEME_FALSE); }")
    (sockaddr-blob A)))
+(define (sockaddr-path A)
+  #? (AF_UNIX
+      ((foreign-lambda* c-string ((scheme-pointer sa))
+         "switch (((struct sockaddr*)sa)->sa_family) {"
+         "case AF_UNIX: C_return(((struct sockaddr_un*)sa)->sun_path);"
+         "default: C_return(NULL); }"
+         )
+       (sockaddr-blob A))
+      (error 'sockaddr-path "UNIX sockets are not supported")))
 
 (define-record-printer (sockaddr A out)
   (fprintf out "#<sockaddr ~S>"
@@ -826,6 +827,26 @@
 		(else
 		 (cons n
 		       (sa->sockaddr (location addr) addrlen)))))))))
+
+(define (unix-address path)
+  (cond-expand
+   (AF_UNIX
+    (define _make_unix_sa
+      (foreign-lambda* c-pointer ((c-string path))
+        "struct sockaddr_un *addr; "
+        "addr = C_malloc(sizeof *addr);"
+        "memset(addr,0,sizeof *addr);"
+        "addr->sun_family = AF_UNIX;"
+        "strncpy(addr->sun_path, path, sizeof addr->sun_path - 1);"
+        "addr->sun_path[sizeof addr->sun_path - 1] = '\\0';"
+        "C_return(addr);"))
+    (define _free (foreign-lambda void "C_free" c-pointer))
+    (let ((sa (_make_unix_sa path)))
+      (let ((addr (sa->sockaddr sa (foreign-value "sizeof(struct sockaddr_un)" int))))
+        (_free sa)
+        addr)))
+   (else
+    (error 'unix-address "unix sockets are not supported on this platform"))))
 
 ;; Receive up to LEN bytes from unconnected socket and return 2 values:
 ;; the received string and the socket address from whence it came.

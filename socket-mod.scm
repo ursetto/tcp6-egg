@@ -10,9 +10,10 @@
  integer->address-family integer->protocol-type integer->socket-type
  address-family->integer protocol-type->integer socket-type->integer
 
- sockaddr? sockaddr-family sockaddr-address sockaddr-port sockaddr->string ;; sockaddr-path
+ sockaddr? sockaddr-family sockaddr-address
+ sockaddr-port sockaddr-path sockaddr->string
 
- address-information name-information inet-address
+ address-information name-information inet-address unix-address
  addrinfo-flags addrinfo-family addrinfo-socktype addrinfo-protocol
  addrinfo-address addrinfo-canonname addrinfo?
 

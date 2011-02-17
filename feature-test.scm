@@ -48,7 +48,7 @@
 ;;                                       (values))))))
 ;;     (newline)))
 
-
+;; FIXME: Should eval a cond-expand form
 (define ?!
   (lambda ()
     (for-each (lambda (x) (write x) (newline))
@@ -58,12 +58,12 @@
                                    (body (read p)))
                                (if (feature? ft)
                                    body
-                                   '(values)))))    ;; should be (values) if reader patched
+                                   '(##core#undefined)))))    ;; should be (values) if reader patched
                 (set-sharp-read-syntax!
                   #\- (lambda (p) (let ((ft (read p))
                                    (body (read p)))
                                (if (feature? ft)
-                                   '(values)        ;; should be (values) if reader patched
+                                   '(##core#undefined)        ;; should be (values) if reader patched
                                    body))))
                 (set-sharp-read-syntax!
                   #\? (lambda (p) (let* ((test (read p))
@@ -73,5 +73,5 @@
                                (if (feature? ft)
                                    con
                                    (if (null? alt)
-                                       (values)
+                                       '(##core#undefined)    ;; same
                                        (car alt))))))))))
