@@ -7,8 +7,8 @@
 This extension provides a comprehensive interface to BSD sockets,
 including socket creation, client and server setup, data transfer, i/o
 ports, forward and reverse address resolution, socket options, and
-socket-related integer constants.  It supports both IPv4 and IPv6.
-UNIX sockets are not yet supported.
+socket-related integer constants.  It supports both IPv4 and IPv6,
+as well as UNIX sockets.
 
 All socket operations block only the calling thread; other threads can
 continue to run, even on Windows platforms.
@@ -85,6 +85,7 @@ Protocol constants for socket creation.
 <procedure>(sockaddr-family sa)</procedure><br>
 <procedure>(sockaddr-address sa)</procedure><br>
 <procedure>(sockaddr-port sa)</procedure><br>
+<procedure>(sockaddr-path sa)</procedure><br>
 <procedure>(sockaddr->string sa)</procedure><br>
 
 The socket address object.  {{sockaddr}} is used throughout
@@ -94,13 +95,14 @@ socket endpoint.
 The most convenient constructor for Internet socket addresses is
 {{inet-address}}.  The fundamental Internet socket address constructor
 is {{address-information}}, which is more powerful but also more
-complex to use.
+complex to use.  For UNIX sockets, use {{unix-address}}.
 
 Socket address object accessors are:
 
 ; {{family}} : returns the socket address family as an integer constant, e.g. {{af/inet}}.
 ; {{address}} : returns the address of a socket as a string (for Internet sockets, this is the IP address).
 ; {{port}} : returns the socket port for Internet sockets; it is an error to call it on another type of socket.
+; {{path}} : returns the pathname for UNIX sockets, or an error for other socket types.
 ; {{->string}} : returns a compact representation of the socket address as a string.  For Internet sockets, it returns "address" when port is 0; otherwise, it returns "address:port" for IPv4 addresses and "[address]:port" for IPv6 addresses.
 
 <procedure>(inet-address addr port)</procedure>
@@ -118,6 +120,12 @@ address {{#f}} is typically "::" and the resulting object will be of
 family {{af/inet6}}.  This may not be what you want, so it is a good
 idea to specify which unspecified address (yes, really) you mean --
 "::" or "0.0.0.0" -- in lieu of {{#f}}.
+
+<procedure>(unix-address PATH)</procedure>
+
+Returns a {{sockaddr}} object constructed from the pathname PATH,
+suitable for use with a socket in address family {{af/unix}}.
+Throws an error if UNIX sockets are not supported on your platform.
 
 === Address resolution
 

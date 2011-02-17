@@ -199,20 +199,24 @@
 ;; Port and path will return #f if called on the wrong sockaddr type.
 ;; Maybe throw an error instead?
 (define (sockaddr-port A)
-  ((foreign-lambda* scheme-object ((scheme-pointer sa))
-     "switch (((struct sockaddr*)sa)->sa_family) {"
-     "case AF_INET: C_return(C_fix(ntohs(((struct sockaddr_in*)sa)->sin_port)));"
-     "case AF_INET6: C_return(C_fix(ntohs(((struct sockaddr_in6*)sa)->sin6_port)));"
-     "default: C_return(C_SCHEME_FALSE); }")
-   (sockaddr-blob A)))
+  (or
+   ((foreign-lambda* scheme-object ((scheme-pointer sa))
+      "switch (((struct sockaddr*)sa)->sa_family) {"
+      "case AF_INET: C_return(C_fix(ntohs(((struct sockaddr_in*)sa)->sin_port)));"
+      "case AF_INET6: C_return(C_fix(ntohs(((struct sockaddr_in6*)sa)->sin6_port)));"
+      "default: C_return(C_SCHEME_FALSE); }")
+    (sockaddr-blob A))
+   (network-error 'sockaddr-port "unable to obtain port for socket address" A)))
 (define (sockaddr-path A)
   #? (AF_UNIX
-      ((foreign-lambda* c-string ((scheme-pointer sa))
-         "switch (((struct sockaddr*)sa)->sa_family) {"
-         "case AF_UNIX: C_return(((struct sockaddr_un*)sa)->sun_path);"
-         "default: C_return(NULL); }"
-         )
-       (sockaddr-blob A))
+      (or
+       ((foreign-lambda* c-string ((scheme-pointer sa))
+          "switch (((struct sockaddr*)sa)->sa_family) {"
+          "case AF_UNIX: C_return(((struct sockaddr_un*)sa)->sun_path);"
+          "default: C_return(NULL); }"
+          )
+        (sockaddr-blob A))
+       (network-error 'sockaddr-path "unable to obtain path for socket address" A))
       (error 'sockaddr-path "UNIX sockets are not supported")))
 
 (define-record-printer (sockaddr A out)
@@ -832,7 +836,7 @@
   (cond-expand
    (AF_UNIX
     (define _make_unix_sa
-      (foreign-lambda* c-pointer ((c-string path))
+      (foreign-lambda* c-pointer ((nonnull-c-string path))
         "struct sockaddr_un *addr; "
         "addr = C_malloc(sizeof *addr);"
         "memset(addr,0,sizeof *addr);"
