@@ -56,22 +56,24 @@
                 (set-sharp-read-syntax!
                   #\+ (lambda (p) (let ((ft (read p))
                                    (body (read p)))
-                               (if (feature? ft)
-                                   body
-                                   '(##core#undefined)))))    ;; should be (values) if reader patched
+                               (eval
+                                `(cond-expand (,ft ',body)
+                                              (else '(##core#undefined)))) ;; should be (values) if reader patched
+                               )))
                 (set-sharp-read-syntax!
                   #\- (lambda (p) (let ((ft (read p))
                                    (body (read p)))
-                               (if (feature? ft)
-                                   '(##core#undefined)        ;; should be (values) if reader patched
-                                   body))))
+                               (eval
+                                `(cond-expand (,ft '(##core#undefined))   ;; should be (values) if reader patched
+                                              (else ',body))))))
                 (set-sharp-read-syntax!
-                  #\? (lambda (p) (let* ((test (read p))
-                                    (ft (car test))
+                 #\? (lambda (p) (let* ((test (read p))
+                                   (ft (car test))
                                    (con (cadr test))
-                                   (alt (cddr test)))
-                               (if (feature? ft)
-                                   con
-                                   (if (null? alt)
-                                       '(##core#undefined)    ;; same
-                                       (car alt))))))))))
+                                   (alt (cddr test)))  ;; alt optional; maybe should not be
+                              (eval
+                               `(cond-expand (,ft ',con)
+                                             (else
+                                              ,(if (null? alt)
+                                                   '(##core#undefined)
+                                                   (list 'quote (car alt)))))))))))))

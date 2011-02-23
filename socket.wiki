@@ -911,6 +911,11 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 
 ; 0.1 : Initial release for Chicken 4.
 
+=== Portability
+
+* socket 0.1 has been successfully built and tested on Mac OS X 10.5, 
+  Ubuntu 10.10, Windows XP SP3 and NetBSD 5.1.
+
 === License
 
  Copyright (c) 2011 Jim Ursetto.  All rights reserved.
