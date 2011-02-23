@@ -1,4 +1,4 @@
-(define-syntax R
+(define-syntax register-foreign-feature
   (lambda (e r c)
     (let ((F (->string (cadr e))))
       (let ((%begin (r 'begin))
@@ -11,7 +11,7 @@
           `(,%begin (,%define-foreign-variable ,var ,%bool ,cvar)
                     ((,%if ,var ,%R! ,%U!)
                      (,%quote ,ft))))))))
-(define-syntax D
+(define-syntax define-foreign-feature
   (er-macro-transformer
    (lambda (e r c)
      (let ((d (->string (cadr e)))
@@ -19,13 +19,27 @@
        `(,(r 'foreign-declare)
          ,(sprintf "#ifdef ~A\n#define ~A~A 1\n#else \n#define ~A~A 0\n#endif\n"
                    d dp d dp d))))))
-(define-syntax DR
-  (syntax-rules () ((DR F) (begin (D F) (R F)))))
-(define-syntax DP
+(define-syntax define-foreign-features
+  (er-macro-transformer
+   (lambda (e r c)
+     `(,(r 'begin)
+       . ,(map (lambda (x) `(,(r 'define-foreign-feature) ,x))
+               (cdr e))))))
+(define-syntax register-foreign-features
+  (er-macro-transformer
+   (lambda (e r c)
+     `(,(r 'begin)
+       . ,(map (lambda (x) `(,(r 'register-foreign-feature) ,x))
+               (cdr e))))))
+(define-syntax defreg-foreign-features
+  (syntax-rules () ((DR args ...)
+                    (begin (define-foreign-features args ...)
+                           (register-foreign-features args ...)))))
+(define-syntax definition-prefix
   (lambda (e r c)
     (set! *ft:definition-prefix* (->string (cadr e)))
     `(,(r 'begin))))
-(define-syntax RP
+(define-syntax registration-prefix
   (lambda (e r c)
     (set! *ft:registration-prefix* (->string (cadr e)))
     `(,(r 'begin))))
@@ -36,20 +50,7 @@
 (define R! (lambda (f) (printf "(register-feature! '~S)\n" f)))
 (define U! (lambda (f) (printf "(unregister-feature! '~S)\n" f)))
 
-;; (define ?!
-;;   (lambda ()
-;;     (write 
-;;      '(set-sharp-read-syntax! #\?
-;;                               (lambda (p)
-;;                                 (let ((ft (read p))
-;;                                       (body (read p)))
-;;                                   (if (feature? ft)
-;;                                       body
-;;                                       (values))))))
-;;     (newline)))
-
-;; FIXME: Should eval a cond-expand form
-(define ?!
+(define write-feature-syntax
   (lambda ()
     (for-each (lambda (x) (write x) (newline))
               `(

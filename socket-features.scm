@@ -2,9 +2,10 @@
 
 #> #include "socket.h" <#
 
-(DP HAVE_)
-(RP "")
+(definition-prefix HAVE_)
+(registration-prefix "")
 
-(DR AF_UNIX)
+(defreg-foreign-features
+  AF_UNIX)
 
-(?!)
+(write-feature-syntax)
