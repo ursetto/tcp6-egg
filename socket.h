@@ -26,7 +26,7 @@ static WSADATA wsa;
 # define SHUT_RDWR SD_BOTH
 #endif
 
-#define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\\
+#define typecorrect_getsockopt(socket, level, optname, optval, optlen)	\
     getsockopt(socket, level, optname, (char *)optval, optlen)
 
 /* NB Might move this out of header file */
