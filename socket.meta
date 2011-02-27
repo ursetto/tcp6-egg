@@ -1,7 +1,7 @@
 (
 (synopsis "Interface to the BSD socket API")
 (author "Jim Ursetto")
-(needs foreigners)
+(needs foreigners feature-test)
 (license "BSD")
 (category net)
 )
