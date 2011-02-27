@@ -74,6 +74,12 @@
 ;; (such as -1) through to get/setsockopt, but this is more meaningful
 ;; and safer.  (Note this does use the foreign-vars instead of
 ;; the constants, so it needs to test for -1 instead of #f.)
+
+(define (unsupported-socket-option name)
+  ;; Deduplicates code in define-socket-option.  More savings could
+  ;; be achieved by not printing "name".
+  (unsupported-error name "socket option unavailable on this platform"))
+
 (define-syntax define-socket-option
   (er-macro-transformer
    (lambda (e r c)
@@ -83,7 +89,8 @@
            (level (caddr e))
            (optname (cadddr e))
            (set (car (cddddr e)))
-           (get (cadr (cddddr e))))
+           (get (cadr (cddddr e)))
+           (%unsup (gensym))) ;; needed?
        `(,(r 'begin)
           (,(r 'define) ,name
            ;; We could move this test into the getters and setters; little
@@ -91,11 +98,10 @@
            (,(r 'if) (,(r 'or)
                       (,(r '=) ,(local level) -1)
                       (,(r '=) ,(local optname) -1))
-            (,(r 'getter-with-setter)
-             (,(r 'lambda) (s)
-              (,(r 'unsupported-error) ',name "socket option unavailable on this platform"))
-             (,(r 'lambda) (s v)
-              (,(r 'unsupported-error) ',name "socket option unavailable on this platform")))
+            (,(r 'let) ((,%unsup
+                         (,(r 'lambda) _
+                          (,(r 'unsupported-socket-option) ',name))))
+             (,(r 'getter-with-setter) ,%unsup ,%unsup))
             (,(r 'getter-with-setter)
              (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
              (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v)))))
