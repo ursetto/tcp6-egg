@@ -95,3 +95,6 @@ char *skt_strerror(int err) {
 #else
 #undef AF_UNIX
 #endif
+
+/* For testing */
+/* #undef IPV6_V6ONLY */

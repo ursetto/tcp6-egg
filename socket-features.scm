@@ -6,6 +6,7 @@
 (registration-prefix "")
 
 (define-foreign-features
-  AF_UNIX)
-
-;;(write-feature-syntax)
+  AF_UNIX
+  IPV6_V6ONLY
+  IPPROTO_IPV6
+  )

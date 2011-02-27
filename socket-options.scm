@@ -121,21 +121,19 @@
            (set (car (cddddr e)))
            (get (cadr (cddddr e)))
            (%unsup (gensym))) ;; needed?
-       `(,(r 'begin)
-          (,(r 'define) ,name
-           ;; We could move this test into the getters and setters; little
-           ;; advantage on either side.
-           (,(r 'if) (,(r 'or)
-                      (,(r '=) ,(local level) -1)
-                      (,(r '=) ,(local optname) -1))
-            (,(r 'let) ((,%unsup
-                         (,(r 'lambda) _
-                          (,(r 'unsupported-socket-option) ',name))))
-             (,(r 'getter-with-setter) ,%unsup ,%unsup))
-            (,(r 'getter-with-setter)
-             (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
-             (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v)))))
-          )))))
+       `(,(r 'define) ,name
+         ;; We could move this test into the getters and setters; little
+         ;; advantage on either side.
+         (,(r 'if) (,(r 'or)
+                    (,(r '=) ,(local level) -1)
+                    (,(r '=) ,(local optname) -1))
+          (,(r 'let) ((,%unsup
+                       (,(r 'lambda) _
+                        (,(r 'unsupported-socket-option) ',name))))
+           (,(r 'getter-with-setter) ,%unsup ,%unsup))
+          (,(r 'getter-with-setter)
+           (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
+           (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v)))))))))
 
 (define-syntax define-boolean-option
   (syntax-rules ()
@@ -146,6 +144,32 @@
   (syntax-rules ()
     ((_ name level optname)
      (define-socket-option name level optname set-integer-option get-integer-option))))
+
+;; Like define-socket-option, but performs a feature test on the level and optname,
+;; choosing whether option is supported at compile time instead of runtime.
+;; Assumes foreign variables have been declared by define-optional-socket-ints.
+(define-syntax define-optional-socket-option
+  (er-macro-transformer
+   (lambda (e r c)
+     (define (feature-name x) (string->symbol (c-name x)))
+     (let ((name (cadr e))
+           (level (caddr e))
+           (optname (cadddr e))
+           (set (car (cddddr e)))
+           (get (cadr (cddddr e)))
+           (%unsup (gensym)))
+       `(,(r 'define) ,name
+         (,(r 'cond-expand)
+          ((,(r 'and) ,(feature-name level) ,(feature-name optname))
+           (,(r 'getter-with-setter)
+            (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
+            (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v))))
+          (,(r 'else)
+           (,(r 'let) ((,%unsup
+                        (,(r 'lambda) _
+                         (,(r 'unsupported-socket-option) ',name))))
+            (,(r 'getter-with-setter) ,%unsup ,%unsup)))))))))
+
 
 ;;; FFI
 
@@ -291,14 +315,18 @@
 
  ;; There's probably a subset of these that we can rely on (i.e. error out on if undefined)
  ;; Either that or just make everything optional
- ipv6/v6only ipv6/addrform ipv6/mtu
+ ipv6/addrform ipv6/mtu
  ipv6/mtu-discover ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
  ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
  ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
  ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
 
- ipproto/ipv6 
+
 )
+
+(define-optional-socket-ints
+  ipv6/v6only
+  ipproto/ipv6)
 
 (define-socket-ints
 ;; socket options
@@ -319,7 +347,7 @@
   ip/add-membership ip/drop-membership
 
 ;; ipv6 options
-  ipv6/v6only ipv6/addrform ipv6/mtu ipv6/mtu-discover
+  ipv6/addrform ipv6/mtu ipv6/mtu-discover
   ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
   ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
   ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
@@ -392,4 +420,6 @@
 (define-integer-option ip-type-of-service ipproto/ip ip/tos)
 (define-integer-option ip-time-to-live ipproto/ip ip/ttl)
 
-(define-boolean-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only)
+(define-optional-socket-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only set-boolean-option get-boolean-option)
+;;(define-boolean-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only
+
