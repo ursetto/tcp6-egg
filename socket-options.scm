@@ -115,8 +115,6 @@
 (define-syntax define-socket-option
   (er-macro-transformer
    (lambda (e r c)
-     (define (setter-symbol s)
-       (string->symbol (string-append (symbol->string s) "-set!")))
      (let ((name (cadr e))
            (level (caddr e))
            (optname (cadddr e))
@@ -137,8 +135,6 @@
             (,(r 'getter-with-setter)
              (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
              (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v)))))
-          ;; (,(r 'define) ,(setter-symbol name)
-          ;;  (,(r 'lambda) (s v) (,set ',(setter-symbol name) s ,(local level) ,(local optname) v)))
           )))))
 
 (define-syntax define-boolean-option
