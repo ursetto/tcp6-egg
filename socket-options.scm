@@ -27,8 +27,7 @@
              (lname (local sym)))
          `(,(r 'begin)
            (,(r 'define-foreign-variable) ,lname ,(r 'int) ,str)
-           ;; FIXME: Will go away once all optional vars are transitioned to features.
-           (,(r 'define) ,sym (,(r 'if) (,(r '=) ,lname -1) #f ,lname))))))))
+           (,(r 'define) ,sym ,lname)))))))
 
 (define-syntax define-socket-ints
   (er-macro-transformer
