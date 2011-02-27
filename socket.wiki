@@ -909,6 +909,7 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 
 === Version history
 
+; 0.2 : Add UNIX socket support; eliminate much dead code and runtime support checks.
 ; 0.1 : Initial release for Chicken 4.
 
 === Portability
