@@ -308,24 +308,25 @@
  so/useloopback so/reuseport so/timestamp so/exclusiveaddruse
 
  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
-
- ip/mtu ip/mtu-discover
- ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert 
- ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
-
- ;; There's probably a subset of these that we can rely on (i.e. error out on if undefined)
- ;; Either that or just make everything optional
- ipv6/addrform ipv6/mtu
- ipv6/mtu-discover ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
- ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
- ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
- ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
-
-
 )
 
+;; Optional socket ints must be defined as foreign features.
 (define-optional-socket-ints
-  ipv6/v6only
+
+  ip/mtu ip/mtu-discover
+  ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert 
+  ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
+
+  ;; NB There's probably a subset of IPv6 options these that we can require
+  ;; when IPv6 is enabled (i.e. error out on if undefined).
+  ipv6/v6only ipv6/addrform ipv6/mtu
+  ipv6/mtu-discover ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
+  ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
+  ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
+  ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
+  ;; ipv6/add-membership ipv6/drop-membership   ;; OBSOLETE synonyms for JOIN/LEAVE_GROUP
+  ;; ipv6/options ipv6/recvopts ipv6/recvretopts ipv6/retopts ipv6/recvdstaddr ;; DEPRECATED
+
   ipproto/ipv6)
 
 (define-socket-ints
@@ -340,20 +341,11 @@
   tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
 ;; ip options
-  ip/options ip/hdrincl ip/tos ip/ttl ip/mtu ip/mtu-discover
-  ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert
-  ip/recvopts ip/recvretopts ip/retopts ip/recvdstaddr
+  ip/options ip/hdrincl ip/tos ip/ttl
   ip/multicast-if ip/multicast-ttl ip/multicast-loop
   ip/add-membership ip/drop-membership
 
 ;; ipv6 options
-  ipv6/addrform ipv6/mtu ipv6/mtu-discover
-  ipv6/multicast-hops ipv6/multicast-if ipv6/multicast-loop ipv6/pktinfo 
-  ipv6/rthdr ipv6/authhdr ipv6/dstopts ipv6/hopopts ipv6/flowinfo ipv6/hoplimit
-  ipv6/recverr ipv6/router-alert ipv6/unicast-hops ipv6/nexthop
-  ipv6/port-range ipv6/join-group ipv6/leave-group ipv6/checksum
-  ;; ipv6/add-membership ipv6/drop-membership   ;; OBSOLETE synonyms for JOIN/LEAVE_GROUP
-  ;; ipv6/options ipv6/recvopts ipv6/recvretopts ipv6/retopts ipv6/recvdstaddr ;; DEPRECATED
   
 ;; socket levels
   sol/socket ipproto/ip ipproto/icmp ipproto/ipv6
@@ -420,6 +412,7 @@
 (define-integer-option ip-type-of-service ipproto/ip ip/tos)
 (define-integer-option ip-time-to-live ipproto/ip ip/ttl)
 
-(define-optional-socket-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only set-boolean-option get-boolean-option)
-;;(define-boolean-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only
+(define-optional-socket-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only
+  set-boolean-option get-boolean-option)
+;;(define-boolean-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only)
 
