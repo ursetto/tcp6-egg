@@ -1,4 +1,4 @@
-(include "feature-test.scm")
+(use feature-test)
 
 #> #include "socket.h" <#
 
@@ -8,4 +8,4 @@
 (define-foreign-features
   AF_UNIX)
 
-(write-feature-syntax)
+;;(write-feature-syntax)
