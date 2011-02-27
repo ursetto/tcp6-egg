@@ -15,23 +15,6 @@
 (define-for-syntax (c-name sym)
   (string-translate (string-upcase (symbol->string sym)) "/-" #\_))
 
-;; If socket option is undefined in C, #define it to -1.  We use that
-;; value in the foreign-variable to denote "undefined".  Safe unless
-;; we encounter negative value socket options.
-(define-syntax declare-foreign-sockopt
-  (er-macro-transformer
-   (lambda (e r c)
-     (let ((cname (c-name (cadr e))))
-       `(,(r 'foreign-declare)
-         ,(sprintf "#ifndef ~A\n#define ~A -1\n#endif\n" cname cname))))))
-(define-syntax declare-foreign-sockopts
-  (er-macro-transformer
-   (lambda (e r c)
-     `(,(r 'begin)
-       ,@(map (lambda (sym) `(,(r 'declare-foreign-sockopt) ,sym))
-              (cdr e))))))
-
-
 ;; (define-socket-int so/reuseaddr) =>
 ;;    (begin (define-foreign-variable SO_REUSEADDR "SO_REUSEADDR")
 ;;           (define so/reuseaddr (if (= SO_REUSEADDR -1) #f SO_REUSEADDR)))
@@ -170,6 +153,17 @@
                          (,(r 'unsupported-socket-option) ',name))))
             (,(r 'getter-with-setter) ,%unsup ,%unsup)))))))))
 
+(define-syntax define-optional-boolean-option
+  (syntax-rules ()
+    ((_ name level optname)
+     (define-optional-socket-option name level optname
+       set-boolean-option get-boolean-option))))
+
+(define-syntax define-optional-integer-option
+  (syntax-rules ()
+    ((_ name level optname)
+     (define-optional-socket-option name level optname
+       set-integer-option get-integer-option))))
 
 ;;; FFI
 
@@ -304,14 +298,11 @@
 
 ;;; socket integers
 
-(declare-foreign-sockopts        ;; #ifndef, then #define these to -1
- so/useloopback so/reuseport so/timestamp so/exclusiveaddruse
-
- tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
-)
-
 ;; Optional socket ints must be defined as foreign features.
 (define-optional-socket-ints
+  so/useloopback so/reuseport so/timestamp so/exclusiveaddruse
+
+  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
   ip/mtu ip/mtu-discover
   ip/pktinfo ip/recverr ip/recvtos ip/recvttl ip/router-alert 
@@ -334,11 +325,9 @@
   so/reuseaddr so/debug so/acceptconn so/keepalive so/dontroute
   so/broadcast so/linger so/oobinline so/sndbuf so/rcvbuf
   so/sndlowat so/rcvlowat so/sndtimeo so/rcvtimeo so/error so/type
-  so/useloopback so/reuseport so/timestamp so/exclusiveaddruse
 
 ;; tcp options
   tcp/nodelay
-  tcp/maxseg tcp/nopush tcp/noopt tcp/keepalive
 
 ;; ip options
   ip/options ip/hdrincl ip/tos ip/ttl
@@ -348,7 +337,7 @@
 ;; ipv6 options
   
 ;; socket levels
-  sol/socket ipproto/ip ipproto/icmp ipproto/ipv6
+  sol/socket ipproto/ip ipproto/icmp
 ; ipproto/tcp ipproto/udp            ;; already provided in socket.scm
 )
 
@@ -398,10 +387,10 @@
 ;;; TCP options
 
 (define-boolean-option tcp-no-delay? ipproto/tcp tcp/nodelay)
-(define-integer-option tcp-max-segment-size ipproto/tcp tcp/maxseg)
-(define-boolean-option tcp-no-push? ipproto/tcp tcp/nopush)
-(define-boolean-option tcp-no-options? ipproto/tcp tcp/noopt)
-(define-integer-option tcp-keep-alive ipproto/tcp tcp/keepalive)
+(define-optional-integer-option tcp-max-segment-size ipproto/tcp tcp/maxseg)
+(define-optional-boolean-option tcp-no-push? ipproto/tcp tcp/nopush)
+(define-optional-boolean-option tcp-no-options? ipproto/tcp tcp/noopt)
+(define-optional-integer-option tcp-keep-alive ipproto/tcp tcp/keepalive)
 
 ;;; IP options
 
