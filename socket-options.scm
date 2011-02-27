@@ -44,6 +44,7 @@
              (lname (local sym)))
          `(,(r 'begin)
            (,(r 'define-foreign-variable) ,lname ,(r 'int) ,str)
+           ;; FIXME: Will go away once all optional vars are transitioned to features.
            (,(r 'define) ,sym (,(r 'if) (,(r '=) ,lname -1) #f ,lname))))))))
 
 (define-syntax define-socket-ints
@@ -54,6 +55,37 @@
                 (if (pair? sym)
                     `(,(r 'define-socket-int) ,(car sym) ,(cadr sym))
                     `(,(r 'define-socket-int) ,sym)))
+              (cdr e))))))
+
+;; (define-optional-socket-int so/reuseaddr)
+;;  => (cond-expand (SO_REUSEADDR
+;;                   (define-foreign-variable SO_REUSEADDR int "SO_REUSEADDR")
+;;                   (define so/reuseaddr SO_REUSEADDR))
+;;                  (else
+;;                   (define so/reuseaddr #f))))
+(define-syntax define-optional-socket-int
+  (er-macro-transformer
+   (lambda (e r c)
+     (let ((sym (cadr e))
+           (str (cddr e)))
+       (let ((str (if (pair? str) (->string (car str)) (c-name sym)))
+             (lname (local sym)))
+         (let ((feat (string->symbol str)))
+           `(,(r 'cond-expand)
+             (,feat 
+              (,(r 'define-foreign-variable) ,lname ,(r 'int) ,str)
+              (,(r 'define) ,sym ,lname))
+             (,(r 'else)
+              (,(r 'define) ,sym #f)))))))))
+
+(define-syntax define-optional-socket-ints
+  (er-macro-transformer
+   (lambda (e r c)
+     `(,(r 'begin)
+       ,@(map (lambda (sym)
+                (if (pair? sym)
+                    `(,(r 'define-optional-socket-int) ,(car sym) ,(cadr sym))
+                    `(,(r 'define-optional-socket-int) ,sym)))
               (cdr e))))))
 
 ;; (define-socket-option ipv6-v6-only? ipproto/ipv6 ipv6/v6only set-boolean-option get-boolean-option) =>
