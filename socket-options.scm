@@ -101,21 +101,11 @@
            (level (caddr e))
            (optname (cadddr e))
            (set (car (cddddr e)))
-           (get (cadr (cddddr e)))
-           (%unsup (gensym))) ;; needed?
+           (get (cadr (cddddr e))))
        `(,(r 'define) ,name
-         ;; We could move this test into the getters and setters; little
-         ;; advantage on either side.
-         (,(r 'if) (,(r 'or)
-                    (,(r '=) ,(local level) -1)
-                    (,(r '=) ,(local optname) -1))
-          (,(r 'let) ((,%unsup
-                       (,(r 'lambda) _
-                        (,(r 'unsupported-socket-option) ',name))))
-           (,(r 'getter-with-setter) ,%unsup ,%unsup))
-          (,(r 'getter-with-setter)
-           (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
-           (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v)))))))))
+         (,(r 'getter-with-setter)
+          (,(r 'lambda) (s) (,get ',name s ,(local level) ,(local optname)))
+          (,(r 'lambda) (s v) (,set ',name s ,(local level) ,(local optname) v))))))))
 
 (define-syntax define-boolean-option
   (syntax-rules ()
