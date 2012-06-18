@@ -391,7 +391,8 @@
     (cond ((string->number (cdr ni))
            => (lambda (p) (cons (car ni) p)))
           (else ni)))
-  (massage (getnameinfo saddr flags)))
+  (massage (getnameinfo (if (string? saddr) (inet-address saddr #f) saddr)
+                        flags)))
 
 (define (getnameinfo saddr flags)
   (let* ((sa (sockaddr-blob saddr))
