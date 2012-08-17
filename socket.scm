@@ -566,6 +566,9 @@
 (define-record socket fileno family type protocol)  ;; NB socket? conflicts with Unit posix
 (define-inline (%socket-fileno so)
   (##sys#slot so 1))
+(define-inline (check-socket so loc)
+  (unless (socket? so)
+    (type-error loc "argument is not a socket" so)))
 
 (define-record-printer (socket s out)
   (fprintf out "#<socket fd:~S ~S ~S>"
@@ -753,6 +756,7 @@
                         (network-error 'socket-receive!
                                        "receive buffer must be a blob or a string" so))))
          (end (or end buflen)))
+    (check-socket so 'socket-receive!)
     (##sys#check-exact start)    
     (##sys#check-exact end)
     (##sys#check-exact flags)
@@ -785,7 +789,9 @@
 ;; equal to the largest LEN ever given here, to avoid excessive allocation.
 ;; TODO: Should LEN default to socket-receive-buffer-size ?
 (define (socket-receive so len #!optional (flags 0))
-  (let ((buf (make-string len)))
+  (let ((buf (make-string len)))  ; checks len exact
+    (check-socket so 'socket-receive)
+    (##sys#check-exact flags)
     (let ((n (%socket-receive! so buf 0 len flags (socket-receive-timeout))))
       (if (= len n)
 	  buf
@@ -802,6 +808,7 @@
                         (network-error 'socket-receive-from!
                                        "receive buffer must be a blob or a string" so))))
          (end (or end buflen)))
+    (check-socket so 'socket-receive-from!)
     (##sys#check-exact start)    
     (##sys#check-exact end)
     (##sys#check-exact flags)
@@ -857,7 +864,9 @@
 ;; the received string and the socket address from whence it came.
 ;; See TODOs at socket-receive.
 (define (socket-receive-from so len #!optional (flags 0))
-  (let ((buf (make-string len)))
+  (let ((buf (make-string len))) ; checks len exact
+    (check-socket so 'socket-receive-from)
+    (##sys#check-exact flags)
     (let ((R (%socket-receive-from! so buf 0 len flags (socket-receive-timeout))))
       (let ((n (car R)))
 	(values (if (= len n) buf (substring buf 0 n))
@@ -877,6 +886,7 @@
                         (network-error 'socket-send
                                        "send buffer must be a blob or a string" so))))
          (end (or end buflen)))
+    (check-socket so 'socket-send)
     (##sys#check-exact start)
     (##sys#check-exact end)
     (##sys#check-exact flags)
@@ -927,6 +937,7 @@
                         (network-error 'socket-send-all
                                        "send buffer must be a blob or a string" so))))
          (end (or end buflen)))
+    (check-socket so 'socket-send-all)
     (##sys#check-exact start)
     (##sys#check-exact end)
     (##sys#check-exact flags)
@@ -947,6 +958,7 @@
                         (network-error 'socket-send-to
                                        "send buffer must be a blob or a string" so))))
          (end (or end buflen)))
+    (check-socket so 'socket-send-to)
     (##sys#check-exact start)
     (##sys#check-exact end)
     (##sys#check-exact flags)
