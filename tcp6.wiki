@@ -205,7 +205,7 @@ parameter takes effect at the time when the I/O ports for a particular
 socket are created, i.e. when {{tcp-connect}} or {{tcp-accept}} is
 called.
 
-See {{socket-receive-size}} and {{socket-send-size}} in the
+See {{socket-receive-buffer-size}} and {{socket-send-size}} in the
 [[/egg/socket|socket egg]] for additional send and receive tuning that
 can be done with TCP ports.  This parameter is itself equivalent to
 {{socket-send-buffer-size}}.
@@ -297,6 +297,7 @@ is largely unchanged.
 
 === Version history
 
+; 0.1.1 : Bugfix for #963: tcp-accept now propagates read/write timeout to socket egg.
 ; 0.1 : Initial release.
 
 === License
