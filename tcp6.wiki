@@ -1,5 +1,7 @@
 [[tags: manual]]
 
+== tcp6
+
 '''tcp6''' provides facilities for communicating over TCP/IP and
 supports both IPv4 and IPv6.
 
