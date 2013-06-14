@@ -586,7 +586,10 @@
                            (non-nil (integer->address-family family) family)
                            (non-nil (integer->socket-type socktype) socktype)
                            (non-nil (integer->protocol-type protocol) protocol)))
-    (make-socket s family socktype protocol)))
+    (let ((so (make-socket s family socktype protocol)))
+      (unless (_make_socket_nonblocking s)
+        (network-error/errno 'socket "unable to set socket to non-blocking" so))
+      so)))
 
 (use srfi-18)
 
@@ -625,8 +628,6 @@
         (eq? err _enetunreach) (eq? err _ehostunreach)))
   (let ((s (socket-fileno so))
         (timeout (socket-connect-timeout)))
-    (unless (_make_socket_nonblocking s)
-      (network-error/errno 'socket-connect "unable to set socket to non-blocking" so))
     (when (eq? -1 (_connect s (sockaddr-blob saddr) (sockaddr-len saddr)))
       (let ((err errno))
         (if (or (eq? err _einprogress)
@@ -740,10 +741,10 @@
           (let ((s (_accept s #f #f)))
             (when (eq? -1 s)
               (network-error/errno 'socket-accept "could not accept from listener" so))
-            (unless (_make_socket_nonblocking s)
-              (network-error/errno 'socket-accept "unable to set socket to non-blocking" s))
-            ;; iffy
-            (make-socket s (socket-family so) (socket-type so) (socket-protocol so)))
+            (let ((so (make-socket s (socket-family so) (socket-type so) (socket-protocol so))))
+              (unless (_make_socket_nonblocking s)
+                (network-error/errno 'socket-accept "unable to set socket to non-blocking" so))
+              so))
           (begin
             (block-for-timeout! 'socket-accept to s #:input)
             (restart))))))

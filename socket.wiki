@@ -909,6 +909,9 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 
 === Version history
 
+; 0.2.3 : Set connectionless sockets to nonblocking
+; 0.2.2 : socket-receive and friends must typecheck socket arg
+; 0.2.1 : Treat a bare string arg to name-information as (inet-address str #f)
 ; 0.2 : Add UNIX socket support; eliminate much dead code and runtime support checks.
 ; 0.1 : Initial release for Chicken 4.
 
@@ -919,7 +922,7 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 
 === License
 
- Copyright (c) 2011 Jim Ursetto.  All rights reserved.
+ Copyright (c) 2011-2013 Jim Ursetto.  All rights reserved.
  Copyright (c) 2008-2011, The Chicken Team
  Copyright (c) 2000-2007, Felix L. Winkelmann 
  
