@@ -330,14 +330,17 @@
 ; ipproto/tcp ipproto/udp            ;; already provided in socket.scm
 )
 
-;;; socket-level option helpers
+;;; socket-level options
 
 (cond-expand
- (windows
+ ((and windows SO_EXCLUSIVEADDRUSE)
   ;; Windows semantics of so/reuseaddr are basically nonsense,
   ;; so use so/exclusiveaddruse for correct semantics.  However,
   ;; this may fail without admin privs on WinXP<SP3 and Win2k<SP4,
   ;; so on failure fall back to so/reuseaddr (better than nothing).
+  ;; Also, so/exclusiveaddruse may not be available, so we explicitly feature
+  ;; test for it; define-socket-option expects the foreign var to be defined,
+  ;; and define-optional-socket-option won't fall back to so/reuseaddr.
   (define (set-reuse-option where s level name val)
     (handle-exceptions exn
         (set-boolean-option where s level so/reuseaddr val)
@@ -345,13 +348,8 @@
   (define (get-reuse-option where s level name)
     (handle-exceptions exn
         (get-boolean-option where s level so/reuseaddr)
-      (get-boolean-option where s level name))))
- (else))
+      (get-boolean-option where s level name)))
 
-;;; socket-level options
-
-(cond-expand
- (windows
   (define-socket-option so-reuse-address? sol/socket so/exclusiveaddruse
                         set-reuse-option get-reuse-option))
  (else
