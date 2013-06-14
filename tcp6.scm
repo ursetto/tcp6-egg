@@ -104,12 +104,13 @@
 (define tcp-bind-ipv6-only (make-parameter #f))
 
 (define (tcp-accept tcpl)
-  (parameterize ((socket-accept-timeout (tcp-accept-timeout)))
+  (parameterize ((socket-accept-timeout (tcp-accept-timeout))
+                 (socket-receive-timeout (tcp-read-timeout))
+                 (socket-send-timeout    (tcp-write-timeout))
+                 ;;(socket-send-size           +output-chunk-size+)
+                 ;;(socket-receive-buffer-size +input-buffer-size+)
+                 (socket-send-buffer-size    (tcp-buffer-size)))
     (let ((so (socket-accept (tcp-listener-socket tcpl))))
-      (parameterize (;;(socket-send-size           +output-chunk-size+)
-                     ;;(socket-receive-buffer-size +input-buffer-size+)
-                     (socket-send-buffer-size    (tcp-buffer-size))
-                     ))
       (socket-i/o-ports so))))
 
 (define (tcp-accept-ready? tcpl)
