@@ -737,17 +737,21 @@
   (let ((s (socket-fileno so))
         (to (socket-accept-timeout)))
     (let restart ()
-      (if (eq? 1 (select-for-read s))
-          (let ((s (_accept s #f #f)))
-            (when (eq? -1 s)
-              (network-error/errno 'socket-accept "could not accept from listener" so))
-            (let ((so (make-socket s (socket-family so) (socket-type so) (socket-protocol so))))
-              (unless (_make_socket_nonblocking s)
-                (network-error/errno 'socket-accept "unable to set socket to non-blocking" so))
-              so))
-          (begin
+      (let ((f (select-for-read s)))
+        (cond
+          ((eq? f -1)
+           (network-error/errno 'socket-accept "select failed" so))
+          ((eq? f 1)
+           (let ((s (_accept s #f #f)))
+             (when (eq? -1 s)
+               (network-error/errno 'socket-accept "could not accept from listener" so))
+             (let ((so (make-socket s (socket-family so) (socket-type so) (socket-protocol so))))
+               (unless (_make_socket_nonblocking s)
+                 (network-error/errno 'socket-accept "unable to set socket to non-blocking" so))
+               so)))
+          (else
             (block-for-timeout! 'socket-accept to s #:input)
-            (restart))))))
+            (restart)))))))
 
 ;; Returns number of bytes received.  If 0, and socket is sock/stream, peer has shut down his side.
 (define (socket-receive! so buf #!optional (start 0) (end #f) (flags 0))
