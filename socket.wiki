@@ -1,5 +1,7 @@
 [[tags:egg net]]
 
+== socket
+
 '''socket''' provides an interface to the BSD socket API.  For a somewhat higher-level interface, see the [[/egg/tcp6|tcp6]] and [[/egg/udp6|udp6]] extensions.
 
 == Overview
@@ -224,7 +226,9 @@ representation of the address is returned as a string.  If service
 number lookup fails, it is returned as an integer.
 
 The socket address object is usually constructed with {{inet-address}}
-or obtained from a socket call, e.g. {{socket-peer-name}}.
+or obtained from a socket call, e.g. {{socket-peer-name}}.  As a
+convenience in socket 0.2.1 and later, if {{SADDR}} is a string, it is
+converted to a socket address object with {{(inet-address SADDR #f)}}.
 
 The behavior of {{name-information}} can be influenced by FLAGS.  FLAGS
 may be the {{bitwise-ior}} (or simply {{+}}) of the following
@@ -244,10 +248,12 @@ Examples:
    ; => ("localhost" . "http")
  (name-information (inet-address "::1" #f))
    ; => ("localhost" . 0)
+ (name-information "::1")
+   ; => ("localhost" . 0)
  (name-information (inet-address "::1" 80) ni/numerichost)
    ; => ("::1" . "http")
  (name-information (inet-address "::1" 80) (+ ni/numerichost ni/numericserv))
-   ; => ("::1" . "http")
+   ; => ("::1" . 80)
  (name-information (inet-address "127.0.0.2" 80))
    ; => ("127.0.0.2" . "http")
  (name-information (inet-address "127.0.0.2" 80) ni/namereqd)
@@ -369,16 +375,21 @@ so calling this manually is not often necessary.  One usage example
 is using {{shut/wr}} to inform a server you have finished transmitting,
 while allowing it to continue sending to you.
 
-<procedure>(socket-close so)</procedure><br>
-<procedure>(socket-close* so)</procedure><br>
+<procedure>(socket-close so)</procedure>
 
 Close socket SO.  If a connection was established,
 the socket is shut down gracefully.
 
-{{socket-close}} throws an error if the close() fails.
-{{socket-close*}} does not, so it is useful if you are unsure if the
-file descriptor has already been closed, for example in a finalizer or
-after a network error.
+{{socket-close}} throws an error if the {{close()}} fails.
+
+<procedure>(socket-close* so)</procedure>
+
+Same as {{socket-close}}, except that {{socket-close*}} does ''not'' 
+throw an error if the {{close()}} fails.  
+
+This could be useful in certain lowlevel code, such as after a network
+error, but you should not use this unless you know what you're doing.
+This might go away or change semantics in the future.
 
 === Status
 
@@ -856,7 +867,10 @@ have a high-level interface created for it instead.
 
 === Client-server examples
 
-To be written.
+For a simple example of client-server communication over a unix socket, see
+[[/Communicating over a unix socket, using the socket egg|here]].
+
+A TCP/IP example is still to be written.
 
 === Disable Nagle's Algorithm on TCP listener socket
 
@@ -866,7 +880,7 @@ socket file descriptor after the fact.
 
  (define L (tcp-listen 8080))
  (define S (tcp-listener-fileno L))
- (set! (tcp-no-delay S) #t)
+ (set! (tcp-no-delay? S) #t)
 
 === Set socket options on HTTP server
 
@@ -912,8 +926,8 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 ; 0.2.5 : socket-accept: Handle select failure. Patch by Jonathan Chan.
 ; 0.2.4 : {{SO_EXCLUSIVEADDR}} fix for Cygwin
 ; 0.2.3 : Set connectionless sockets to nonblocking
-; 0.2.2 : socket-receive and friends must typecheck socket arg
-; 0.2.1 : Treat a bare string arg to name-information as (inet-address str #f)
+; 0.2.2 : Fix segfault in {{socket-receive}}, {{socket-send}} and friends when socket argument was not a socket (reported by hypnocat)
+; 0.2.1 : Treat string {{addr}} arg to {{name-information}} as {{(inet-address addr #f)}}
 ; 0.2 : Add UNIX socket support; eliminate much dead code and runtime support checks.
 ; 0.1 : Initial release for Chicken 4.
 
@@ -924,7 +938,7 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 
 === License
 
- Copyright (c) 2011-2013 Jim Ursetto.  All rights reserved.
+ Copyright (c) 2011-2014, Jim Ursetto.  All rights reserved.
  Copyright (c) 2008-2011, The Chicken Team
  Copyright (c) 2000-2007, Felix L. Winkelmann 
  
