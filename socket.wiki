@@ -35,6 +35,7 @@ socket type {{sock/*}} constant for socket TYPE (TCP, UDP).  PROTOCOL
 should almost always be zero, unless you are creating raw sockets; it is
 implicit in the socket type.  Sockets take up a file descriptor in the
 system until closed, which may or may not happen automatically on error.
+All sockets are created in non-blocking mode.
 
 Accessors:
 
