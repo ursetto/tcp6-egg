@@ -587,6 +587,8 @@
                            (non-nil (integer->socket-type socktype) socktype)
                            (non-nil (integer->protocol-type protocol) protocol)))
     (let ((so (make-socket s family socktype protocol)))
+      ;; Immediately set all sockets in non-blocking mode, even UDP.
+      ;; See http://lists.nongnu.org/archive/html/chicken-users/2013-06/msg00062.html
       (unless (_make_socket_nonblocking s)
         (network-error/errno 'socket "unable to set socket to non-blocking" so))
       so)))
