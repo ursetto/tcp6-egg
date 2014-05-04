@@ -909,6 +909,7 @@ unit by Felix Winkelmann and the rest of the Chicken team.
 
 === Version history
 
+; 0.2.5 : socket-accept: Handle select failure. Patch by Jonathan Chan.
 ; 0.2.4 : {{SO_EXCLUSIVEADDR}} fix for Cygwin
 ; 0.2.3 : Set connectionless sockets to nonblocking
 ; 0.2.2 : socket-receive and friends must typecheck socket arg
