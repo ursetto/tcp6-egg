@@ -1155,6 +1155,7 @@
 			  (if (eq? buflen 0) 
 			      m
 			      (loop n m start) ) ) ) ) )
+	       #-scan-buffer-line-returns-3-vals
 	       (lambda (p limit)	; read-line
 		 (let loop ((str #f)
 			    (limit (or limit (##sys#fudge 21))))
@@ -1184,6 +1185,38 @@
 			  (if (fx< bufindex buflen)
 			      (loop str limit)
 			      #!eof) ) ) ) )
+	       #+scan-buffer-line-returns-3-vals
+	       (lambda (p limit)	; read-line
+		 (when (fx>= bufindex buflen)
+		   (read-input))
+		 (if (fx>= bufindex buflen)
+		     #!eof
+		     (let ((limit (or limit (fx- (##sys#fudge 21) bufindex))))
+		       (receive (next line full-line?)
+			   (##sys#scan-buffer-line
+			    buf
+                            (fxmin buflen (fx+ bufindex limit))
+                            bufindex
+			    (lambda (pos)
+			      (let ((nbytes (fx- pos bufindex)))
+				(cond ((fx>= nbytes limit)
+				       (values #f pos #f))
+				      (else (read-input)
+					    (set! limit (fx- limit nbytes))
+					    (if (fx< bufindex buflen)
+						(values buf bufindex
+							(fxmin buflen
+                                                               (fx+ bufindex limit)))
+						(values #f bufindex #f))))) ) )
+			 ;; Update row & column position
+			 (if full-line?
+			     (begin
+			       (##sys#setislot p 4 (fx+ (##sys#slot p 4) 1))
+			       (##sys#setislot p 5 0))
+			     (##sys#setislot p 5 (fx+ (##sys#slot p 5)
+						      (##sys#size line))))
+			 (set! bufindex next)
+			 line) )) )
 	       ;; (lambda (p)		; read-buffered
 	       ;;   (if (fx>= bufindex buflen)
 	       ;;       ""

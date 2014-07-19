@@ -1,7 +1,14 @@
 ;; -*- scheme -*-
 (compile socket-features.scm)
 (run (./socket-features > socket-config.scm))
-(compile -s -O2 -d1 -X socket-config.scm -X feature-test-syntax
+(define defines '())
+
+;; ##sys#scan-buffer-line changed to return 3 values in
+;; 002ea4128f8 and a302a6dcc9 (approximately Chicken 4.8.2).
+(when (version>=? (chicken-version) "4.8.2")
+      (set! defines `(-D scan-buffer-line-returns-3-vals ,@defines)))
+
+(compile -s -O2 -d1 -X socket-config.scm -X feature-test-syntax ,@defines
          socket-mod.scm -o socket.so -j socket)
 (compile -s -d0 socket.import.scm)
 
