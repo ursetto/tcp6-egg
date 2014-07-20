@@ -748,6 +748,7 @@
              (when (eq? -1 s)
                (network-error/errno 'socket-accept "could not accept from listener" so))
              (let ((so (make-socket s (socket-family so) (socket-type so) (socket-protocol so))))
+               ;; this appears to be redundant now that make-socket sets unblocking
                (unless (_make_socket_nonblocking s)
                  (network-error/errno 'socket-accept "unable to set socket to non-blocking" so))
                so)))
