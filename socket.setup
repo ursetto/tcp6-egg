@@ -15,4 +15,4 @@
 (install-extension
  'socket
  '("socket.so" "socket.import.so")
- '((version "0.2.5")))
+ '((version "0.2.6")))
