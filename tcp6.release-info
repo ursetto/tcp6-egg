@@ -1,0 +1,11 @@
+(repo git "https://github.com/ursetto/{egg-name}-egg")
+(uri targz "https://github.com/ursetto/{egg-name}-egg/tarball/{egg-release}")
+; 0.1.1 present in git repo, but untested.
+(release "0.1.1")
+
+;; Old call-cc repository for this egg. We split the repository into 3 pieces
+;; when moving rfc2553 from mercurial to git.
+
+(repo svn "http://anonymous:@code.call-cc.org/svn/chicken-eggs/release/{chicken-release}/{egg-name}")
+(uri files-list "http://code.call-cc.org/files-list?egg={egg-name};egg-release={egg-release};chicken-release={chicken-release}" svn)
+(release "0.1.1" svn)
