@@ -1,7 +1,0 @@
-(
-(synopsis "An interface to UDP over IPv4 and IPv6")
-(author "Jim Ursetto")
-(needs socket)
-(license "BSD")
-(category net)
-)

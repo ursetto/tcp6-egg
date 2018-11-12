@@ -1,9 +1,0 @@
-;; -*- scheme -*-
-
-(use system)
-(define-system rfc2553
-  (compiled-scheme-file "socket.scm" includes: '("socket-options.scm"))
-  (compiled-scheme-file "tcp6.scm")
-  (compiled-scheme-file "udp6.scm"))
-(current-system rfc2553)
-
