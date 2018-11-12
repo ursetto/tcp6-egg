@@ -1,7 +1,7 @@
 (repo git "https://github.com/ursetto/{egg-name}-egg")
 (uri targz "https://github.com/ursetto/{egg-name}-egg/tarball/{egg-release}")
 ; 0.1.1 present in git repo, but untested.
-(release "0.1.1")
+;;(release "0.1.1")
 (release "0.1.2")
 
 ;; Old call-cc repository for this egg. We split the repository into 3 pieces
