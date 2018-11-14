@@ -4,5 +4,5 @@
   (else))
 
 (define-values (i o) (tcp-connect "localhost" 4242))
-(write-line "Goodbye!" o)
+(write-line "Client says hello!" o)
 (print (read-line i))
