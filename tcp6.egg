@@ -1,0 +1,11 @@
+(
+(synopsis "Interface to TCP over IPv4 and IPv6")
+(author "Jim Ursetto")
+(dependencies socket)
+(license "BSD")
+(category net)
+(version "0.1.2")
+(components (extension tcp6
+                       (csc-options "-O2" "-d1")
+                       (source "tcp6-mod.scm")))
+)
