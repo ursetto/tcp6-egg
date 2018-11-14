@@ -4,7 +4,7 @@
 (dependencies socket)
 (license "BSD")
 (category net)
-(version "0.1.2")
+(version "0.2.0")
 (components (extension tcp6
                        (csc-options "-O2" "-d1")
                        (source "tcp6-mod.scm")))
