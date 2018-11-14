@@ -10,7 +10,9 @@
  tcp-port->socket
  tcp-bind-ipv6-only)
 
-(import scheme (only chicken include use))
-(use socket)
+(import scheme)
+(cond-expand
+ (chicken-4 (import (only chicken include)))
+ (else (import (chicken base))))
 (include "tcp6.scm")
 )

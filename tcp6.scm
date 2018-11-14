@@ -34,9 +34,18 @@
 ;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 ;; OF THE POSSIBILITY OF SUCH DAMAGE.
 
-(import scheme chicken)
-(use extras)
-(require-library srfi-1) (import (only srfi-1 filter))
+(import scheme)
+(cond-expand
+ (chicken-4
+  (import chicken)
+  (use extras)
+  (require-library srfi-1) (import (only srfi-1 filter))
+  (require-extension socket))
+ (else
+  (import (chicken base))
+  (import (chicken condition))
+  (import (only (srfi 1) filter))
+  (import socket)))
 
 (define-inline (tcp-error where msg . args)
   (apply ##sys#signal-hook #:network-error where msg args))
