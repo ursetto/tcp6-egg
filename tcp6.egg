@@ -4,7 +4,7 @@
 (dependencies socket srfi-1)
 (license "BSD")
 (category net)
-(version "0.2.0")
+(version "0.2.1")
 (components (extension tcp6
                        (csc-options "-O2" "-d1")
                        (source "tcp6-mod.scm")))

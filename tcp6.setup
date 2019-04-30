@@ -5,4 +5,4 @@
 (install-extension
  'tcp6
  '("tcp6.so" "tcp6.import.so")
- '((version "0.2.0")))
+ '((version "0.2.1")))
